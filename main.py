@@ -19,23 +19,6 @@ app.add_middleware(
 
 TELEGRAM_TOKEN = "8899732413:AAE7wHYoHYhvePxlxuKCzndeVRdqkOTaCFo"
 
-# Diccionario de equivalencias directas para asegurar que ningún canal se quede sin enlace
-MAPEO_CANALES = {
-    "m+ vamos": "vamos",
-    "m+ deportes": "deportes",
-    "movistar plus": "movistar plus",
-    "movistar+": "movistar plus",
-    "m+ liga de campeones": "ligadecampeones",
-    "m+ liga de campeones 2": "ligadecampeones2",
-    "m+ liga de campeones 3": "ligadecampeones3",
-    "m+ liga de campeones 4": "ligadecampeones4",
-    "dazn laliga": "daznlaliga",
-    "laliga tv hypermotion": "hypermotion",
-    "teledeporte": "teledeporte",
-    "m+ golf 2": "golf",
-    "tv3": "tv3"
-}
-
 def limpiar(texto):
     if not texto: return ""
     n = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
@@ -94,24 +77,23 @@ def obtener_agenda_datos():
                 if len(partido) < 3 or "resultados" in partido.lower():
                     continue
 
-                # --- BÚSQUEDA INTELIGENTE DE HASH ---
+                # --- BÚSQUEDA FLEXIBLE DE HASH EN GITHUB ---
                 hash_acestream = ""
                 logo_canal = ""
                 
                 if lista_canales:
-                    canal_key = canal_marca.lower().strip()
-                    clave_busqueda = MAPEO_CANALES.get(canal_key, limpiar(canal_marca))
+                    canal_limpio = limpiar(canal_marca)
                     
-                    # Buscamos coincidencia en tu JSON
+                    # 1. Búsqueda exacta o contenida en tu JSON
                     for c in lista_canales:
                         if not isinstance(c, dict): continue
                         t_json = limpiar(c.get("title", ""))
                         tvg_json = limpiar(c.get("tvg_id", ""))
                         
-                        if clave_busqueda in t_json or clave_busqueda in tvg_json or t_json in clave_busqueda:
+                        if canal_limpio in t_json or canal_limpio in tvg_json or t_json in canal_limpio:
                             hash_acestream = c.get("hash", "")
                             logo_canal = c.get("logo", "")
-                            # Priorizamos siempre la versión 1080p si existe en tu lista
+                            # Si encuentra una versión en 1080p, prioriza esa
                             if "1080" in c.get("title", ""):
                                 break
 
