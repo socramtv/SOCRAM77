@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extractor de Enlaces</title>
+    <title>Programación TV - Marca</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -23,79 +23,55 @@
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
-        h2 { text-align: center; margin-top: 0; }
+        h2 { text-align: center; margin-top: 0; color: #ff0000; } /* Un toque rojo por Marca */
         .search-box {
             display: flex;
-            gap: 10px;
+            justify-content: center;
             margin-bottom: 20px;
         }
-        input {
-            flex: 1;
-            padding: 10px;
-            border: 1px solid #333;
-            border-radius: 5px;
-            background-color: #2c2c2c;
-            color: white;
-            outline: none;
-        }
         button {
-            padding: 10px 20px;
-            background-color: #007bff;
+            padding: 12px 24px;
+            background-color: #ff0000; /* Botón rojo Marca */
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 1.1em;
+            width: 100%;
         }
-        button:hover { background-color: #0056b3; }
+        button:hover { background-color: #cc0000; }
         .loader { display: none; text-align: center; color: #aaa; margin-bottom: 20px; }
         .result-card {
             background-color: #2c2c2c;
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-left: 4px solid #007bff;
+            border-left: 4px solid #ff0000;
         }
-        .result-card a {
-            color: #4da3ff;
-            text-decoration: none;
-            font-size: 0.9em;
-            word-break: break-all;
+        .event-text {
+            font-size: 1.05em;
+            line-height: 1.4;
         }
-        .result-card a:hover { text-decoration: underline; }
-        .copy-btn {
-            background-color: #444;
-            padding: 5px 10px;
-            font-size: 0.8em;
-            border-radius: 3px;
-        }
-        .copy-btn:hover { background-color: #555; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>🔗 Extractor Web</h2>
+        <h2>📅 Programación Deportiva</h2>
         <div class="search-box">
-            <input type="text" id="urlInput" placeholder="Pega el enlace aquí (ej: https://hubu.ru/...)" value="https://hubu.ru/fctvlink">
-            <button onclick="extraer()">Extraer</button>
+            <button onclick="extraer()">Extraer Eventos de Marca TV</button>
         </div>
         
-        <div id="loader" class="loader">Analizando la web, por favor espera...</div>
+        <div id="loader" class="loader">Consultando Marca.com, por favor espera...</div>
         <div id="resultados"></div>
     </div>
 
     <script>
         async function extraer() {
-            const url = document.getElementById('urlInput').value;
             const loader = document.getElementById('loader');
             const contenedorResultados = document.getElementById('resultados');
             
-            if(!url) return alert("Por favor, introduce una URL");
-
             contenedorResultados.innerHTML = "";
             loader.style.display = "block";
 
@@ -104,7 +80,8 @@
                 const respuesta = await fetch('/extraer', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url })
+                    // Enviamos un JSON con la estructura que espera tu backend (aunque no se use la URL)
+                    body: JSON.stringify({ url: "https://www.marca.com/programacion-tv.html" }) 
                 });
 
                 const datos = await respuesta.json();
@@ -112,29 +89,28 @@
 
                 if(respuesta.ok) {
                     if(datos.enlaces.length === 0) {
-                        contenedorResultados.innerHTML = "<p style='text-align:center; color:#aaa;'>No se encontraron enlaces válidos.</p>";
+                        contenedorResultados.innerHTML = "<p style='text-align:center; color:#aaa;'>No se encontraron eventos en este momento.</p>";
                         return;
                     }
                     
-                    datos.enlaces.forEach(link => {
+                    datos.enlaces.forEach(evento => {
+                        // Limpiamos un poco el texto por si hay barras dobles
+                        const textoLimpio = evento.titulo.replace(/\| \|/g, '|').trim();
+                        
                         contenedorResultados.innerHTML += `
                             <div class="result-card">
-                                <div>
-                                    <strong>${link.titulo}</strong><br>
-                                    <a href="${link.url}" target="_blank">${link.url}</a>
+                                <div class="event-text">
+                                    <strong>${textoLimpio}</strong>
                                 </div>
-                                <button class="copy-btn" onclick="navigator.clipboard.writeText('${link.url}')">Copiar</button>
                             </div>
                         `;
                     });
                 } else {
-                    // Si el servidor de Python devuelve un error controlado
                     alert("Error del servidor: " + datos.detail);
                 }
             } catch (error) {
-                // Si la conexión falla de golpe (ej. CORS, red caída, respuesta rota)
                 loader.style.display = "none";
-                alert("Fallo exacto: " + error.message);
+                alert("Fallo de conexión: " + error.message);
                 console.error("Detalle completo del error:", error);
             }
         }
