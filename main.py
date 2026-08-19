@@ -34,7 +34,10 @@ def obtener_agenda_datos():
         url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/refs/heads/main/hashes.json"
         resp_json = requests.get(url_json, timeout=8)
         if resp_json.status_code == 200:
-            lista_canales = resp_json.json()
+            datos = resp_json.json()
+            # Nos aseguramos de que solo procesamos diccionarios válidos
+            if isinstance(datos, list):
+                lista_canales = [c for c in datos if isinstance(c, dict)]
     except Exception as e:
         print("Aviso JSON:", e)
 
@@ -50,17 +53,14 @@ def obtener_agenda_datos():
     soup = BeautifulSoup(response.text, 'html.parser')
     eventos = []
     
-    # Buscamos cualquier elemento que parezca un evento o bloque de lista en la web de Marca
     items = soup.find_all(['li', 'div'], class_=re.compile('event|item|row|match|schedule', re.I))
-    
     if not items:
         items = soup.find_all('li')
 
     for item in items:
         texto_completo = item.get_text(separator="|", strip=True)
-        
-        # Buscamos si el bloque contiene una hora (ej: 21:00)
         match_hora = re.search(r'\b\d{2}:\d{2}\b', texto_completo)
+        
         if match_hora:
             hora = match_hora.group(0)
             partes = [p.strip() for p in texto_completo.split('|') if p.strip()]
@@ -70,15 +70,17 @@ def obtener_agenda_datos():
                 partido = partes[-2] if len(partes) >= 4 else partes[1]
                 canal_marca = partes[-1]
                 
-                # Cruce de canales con GitHub
                 canal_limpio = simplificar_nombre(canal_marca)
                 hash_acestream = ""
                 logo_canal = ""
                 
                 if canal_limpio and lista_canales:
                     for c in lista_canales:
+                        # Protección extra para evitar fallos de tipo
+                        if not isinstance(c, dict): continue
                         titulo_json = simplificar_nombre(c.get("title", ""))
                         tvgid_json = simplificar_nombre(c.get("tvg_id", ""))
+                        
                         if canal_limpio == titulo_json or canal_limpio == tvgid_json or (len(canal_limpio) > 3 and (canal_limpio in titulo_json or canal_limpio in tvgid_json)):
                             hash_acestream = c.get("hash", "")
                             logo_canal = c.get("logo", "")
@@ -95,7 +97,6 @@ def obtener_agenda_datos():
                     "logo": logo_canal
                 }
                 
-                # Evitamos duplicados exactos
                 if evento_obj not in eventos:
                     eventos.append(evento_obj)
 
@@ -119,14 +120,8 @@ def extraer_programacion():
 
 @app.get("/test-scraping")
 def test_scraping():
-    import traceback
-    try:
-        eventos = obtener_agenda_datos()
-        return {"total_procesados": len(eventos), "muestra": eventos[:3]}
-    except Exception as e:
-        # Esto imprimirá el error exacto en pantalla para ver dónde falla
-        return {"error_critico": str(e), "detalle": traceback.format_exc()}
- 
+    eventos = obtener_agenda_datos()
+    return {"total_procesados": len(eventos), "muestra": eventos[:3]}
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
@@ -145,7 +140,7 @@ async def telegram_webhook(request: Request):
                 return {"status": "ok"}
 
             mensaje = "🏆 *AGENDA DEPORTIVA & ACESTREAM* 🏆\n\n"
-            for ev in eventos[:15]: # Mostramos los primeros para no saturar Telegram
+            for ev in eventos[:15]:
                 emoji = "⚽" if "fútbol" in ev["deporte"].lower() else "🎾" if "tenis" in ev["deporte"].lower() else "🏅"
                 mensaje += f"{emoji} *{ev['deporte']} - {ev['hora']}*\n"
                 mensaje += f"🆚 {ev['partido']}\n"
