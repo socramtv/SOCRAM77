@@ -31,7 +31,6 @@ def extraer_programacion():
     }
     
     try:
-        # Petición estándar, Marca no nos bloqueará
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
@@ -39,21 +38,40 @@ def extraer_programacion():
 
     soup = BeautifulSoup(response.text, 'html.parser')
     eventos = []
-
-    # Buscamos elementos que contengan la programación (listas o contenedores)
-    # Marca suele estructurarlo en listas (<li>) con la hora, el deporte y el canal
     patron_hora = re.compile(r'\b\d{2}:\d{2}\b') 
     
-    for item in soup.find_all(['li', 'div']):
-        texto = item.get_text(separator=" | ", strip=True)
+    textos_vistos = set()
+
+    # Buscamos las etiquetas <li> que es donde Marca guarda cada fila
+    for item in soup.find_all('li'):
+        texto_crudo = item.get_text(separator="|", strip=True)
+        texto_crudo = re.sub(r'\|+', '|', texto_crudo) # Limpia barras dobles
+        partes = [p.strip() for p in texto_crudo.split('|') if p.strip()]
         
-        # Si el texto contiene una hora (ej. 21:00) y tiene cierta longitud, es un evento
-        if patron_hora.search(texto) and 10 < len(texto) < 150:
-            # Evitamos duplicados
-            if not any(e['titulo'] == texto for e in eventos):
+        # Filtro: Un evento real tiene al menos 4 partes. Si tiene menos (ej. "Fútbol | 00:00"), lo ignoramos.
+        if patron_hora.search(texto_crudo) and len(partes) >= 4:
+            if texto_crudo not in textos_vistos:
+                textos_vistos.add(texto_crudo)
+                
+                deporte = partes[0]
+                hora = partes[1]
+                
+                # Asignamos las partes según la estructura de Marca
+                if len(partes) >= 5:
+                    competicion = partes[2]
+                    partido = partes[3]
+                    canal = partes[-1]
+                else:
+                    competicion = ""
+                    partido = partes[2]
+                    canal = partes[-1]
+
                 eventos.append({
-                    "titulo": texto,
-                    "url": "Info extraída de Marca TV"
+                    "deporte": deporte,
+                    "hora": hora,
+                    "competicion": competicion,
+                    "partido": partido,
+                    "canal": canal
                 })
 
-    return {"total": len(eventos), "enlaces": eventos}
+    return {"total": len(eventos), "eventos": eventos}
