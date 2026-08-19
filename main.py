@@ -50,33 +50,26 @@ def obtener_agenda_datos():
     soup = BeautifulSoup(response.text, 'html.parser')
     eventos = []
     
-    # Buscamos de forma flexible los bloques de días y eventos
-    bloques_dia = soup.find_all('li', class_='content-item')
+    # Buscamos cualquier elemento que parezca un evento o bloque de lista en la web de Marca
+    items = soup.find_all(['li', 'div'], class_=re.compile('event|item|row|match|schedule', re.I))
     
-    if not bloques_dia:
-        bloques_dia = soup.find_all('section')
+    if not items:
+        items = soup.find_all('li')
 
-    for bloque_dia in bloques_dia:
-        nodo_titulo = bloque_dia.find('span', class_='title-section-widget')
-        dia_completo = nodo_titulo.get_text(strip=True) if nodo_titulo else "Próximos Eventos"
-
-        for evento in bloque_dia.find_all('li', class_='dailyevent'):
-            try:
-                deporte_tag = evento.find('span', class_='dailyday')
-                deporte = deporte_tag.get_text(strip=True) if deporte_tag else "Deporte"
-
-                hora_tag = evento.find('strong', class_='dailyhour')
-                hora = hora_tag.get_text(strip=True) if hora_tag else "00:00"
-
-                comp_tag = evento.find('span', class_='dailycompetition')
-                competicion = comp_tag.get_text(strip=True) if comp_tag else ""
-
-                partido_tag = evento.find('h4', class_='dailyteams')
-                partido = partido_tag.get_text(strip=True) if partido_tag else "Evento deportivo"
-
-                canal_tag = evento.find('span', class_='dailychannel')
-                canal_marca = canal_tag.get_text(strip=True) if canal_tag else "TV"
-
+    for item in items:
+        texto_completo = item.get_text(separator="|", strip=True)
+        
+        # Buscamos si el bloque contiene una hora (ej: 21:00)
+        match_hora = re.search(r'\b\d{2}:\d{2}\b', texto_completo)
+        if match_hora:
+            hora = match_hora.group(0)
+            partes = [p.strip() for p in texto_completo.split('|') if p.strip()]
+            
+            if len(partes) >= 3:
+                deporte = partes[0] if len(partes[0]) < 15 else "Fútbol"
+                partido = partes[-2] if len(partes) >= 4 else partes[1]
+                canal_marca = partes[-1]
+                
                 # Cruce de canales con GitHub
                 canal_limpio = simplificar_nombre(canal_marca)
                 hash_acestream = ""
@@ -91,19 +84,21 @@ def obtener_agenda_datos():
                             logo_canal = c.get("logo", "")
                             if "1080" in c.get("title", ""): break
 
-                eventos.append({
-                    "dia": dia_completo,
+                evento_obj = {
+                    "dia": "Programación Actual",
                     "deporte": deporte,
                     "hora": hora,
-                    "competicion": competicion,
+                    "competicion": "",
                     "partido": partido,
                     "canal": canal_marca,
                     "hash": hash_acestream,
                     "logo": logo_canal
-                })
-            except Exception:
-                continue
+                }
                 
+                # Evitamos duplicados exactos
+                if evento_obj not in eventos:
+                    eventos.append(evento_obj)
+
     return eventos
 
 def enviar_mensaje_telegram(chat_id, texto):
@@ -144,30 +139,16 @@ async def telegram_webhook(request: Request):
                 return {"status": "ok"}
 
             mensaje = "🏆 *AGENDA DEPORTIVA & ACESTREAM* 🏆\n\n"
-            dia_actual = ""
-            
-            for ev in eventos:
-                if ev["dia"] != dia_actual:
-                    dia_actual = ev["dia"]
-                    mensaje += f"\n📅 *{dia_actual}*\n" + "—" * 15 + "\n"
-                
+            for ev in eventos[:15]: # Mostramos los primeros para no saturar Telegram
                 emoji = "⚽" if "fútbol" in ev["deporte"].lower() else "🎾" if "tenis" in ev["deporte"].lower() else "🏅"
                 mensaje += f"{emoji} *{ev['deporte']} - {ev['hora']}*\n"
-                if ev["competicion"]:
-                    mensaje += f"🏆 {ev['competicion']}\n"
                 mensaje += f"🆚 {ev['partido']}\n"
                 mensaje += f"📺 {ev['canal']}\n"
-                
                 if ev["hash"]:
                     mensaje += f"🔗 `acestream://{ev['hash']}`\n"
                 mensaje += "\n"
-                
-                if len(mensaje) > 3500:
-                    enviar_mensaje_telegram(chat_id, mensaje)
-                    mensaje = ""
 
-            if mensaje.strip():
-                enviar_mensaje_telegram(chat_id, mensaje)
+            enviar_mensaje_telegram(chat_id, mensaje)
                 
     except Exception as e:
         print("Error webhook:", e)
