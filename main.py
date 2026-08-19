@@ -2,13 +2,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-import requests
 from bs4 import BeautifulSoup
+import cloudscraper
 import os
 
 app = FastAPI(title="Extractor de Enlaces")
 
-# Evita bloqueos de seguridad al consultar la API desde el navegador
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,7 +19,6 @@ app.add_middleware(
 class ExtractorRequest(BaseModel):
     url: str
 
-# Esta ruta carga tu interfaz visual (el archivo index.html)
 @app.get("/", response_class=HTMLResponse)
 def cargar_interfaz():
     if os.path.exists("index.html"):
@@ -28,18 +26,21 @@ def cargar_interfaz():
             return f.read()
     return "<h1>Falta el archivo index.html</h1>"
 
-# Esta ruta es la que hace el trabajo de extraer los enlaces
 @app.post("/extraer")
 def extraer_enlaces(request: ExtractorRequest):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    
     try:
-        response = requests.get(request.url, headers=headers, timeout=10)
+        # Usamos cloudscraper en lugar de requests normal para burlar protecciones antibot
+        scraper = cloudscraper.create_scraper(browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        })
+        
+        response = scraper.get(request.url, timeout=15)
         response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=400, detail="No se pudo acceder a la web. Verifica el enlace.")
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Bloqueo o error al acceder: {str(e)}")
 
     soup = BeautifulSoup(response.text, 'html.parser')
     enlaces = []
