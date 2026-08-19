@@ -35,7 +35,6 @@ def obtener_agenda_datos():
         resp_json = requests.get(url_json, timeout=8)
         if resp_json.status_code == 200:
             datos = resp_json.json()
-            # Nos aseguramos de que solo procesamos diccionarios válidos
             if isinstance(datos, list):
                 lista_canales = [c for c in datos if isinstance(c, dict)]
     except Exception as e:
@@ -57,8 +56,17 @@ def obtener_agenda_datos():
     if not items:
         items = soup.find_all('li')
 
+    # Palabras clave prohibidas para evitar basura y falsos eventos
+    palabras_prohibidas = ["ver más", "actualizado", "resultados", "programación deportiva", "lunes", "martes", "miércoles", "miercoles", "jueves", "viernes", "sábado", "sabado", "domingo"]
+
     for item in items:
         texto_completo = item.get_text(separator="|", strip=True)
+        texto_lower = texto_completo.lower()
+
+        # Si contiene palabras prohibidas o no tiene formato de partido, lo ignoramos
+        if any(p in texto_lower for p in palabras_prohibidas):
+            continue
+
         match_hora = re.search(r'\b\d{2}:\d{2}\b', texto_completo)
         
         if match_hora:
@@ -70,13 +78,17 @@ def obtener_agenda_datos():
                 partido = partes[-2] if len(partes) >= 4 else partes[1]
                 canal_marca = partes[-1]
                 
+                # Descartar si el partido es genérico o basura
+                if len(partido) < 3 or "resultados" in partido.lower():
+                    continue
+
+                # Cruce de canales con GitHub
                 canal_limpio = simplificar_nombre(canal_marca)
                 hash_acestream = ""
                 logo_canal = ""
                 
                 if canal_limpio and lista_canales:
                     for c in lista_canales:
-                        # Protección extra para evitar fallos de tipo
                         if not isinstance(c, dict): continue
                         titulo_json = simplificar_nombre(c.get("title", ""))
                         tvgid_json = simplificar_nombre(c.get("tvg_id", ""))
@@ -87,7 +99,7 @@ def obtener_agenda_datos():
                             if "1080" in c.get("title", ""): break
 
                 evento_obj = {
-                    "dia": "Programación Actual",
+                    "dia": "Próximos Partidos",
                     "deporte": deporte,
                     "hora": hora,
                     "competicion": "",
@@ -97,6 +109,7 @@ def obtener_agenda_datos():
                     "logo": logo_canal
                 }
                 
+                # Evitamos duplicados exactos
                 if evento_obj not in eventos:
                     eventos.append(evento_obj)
 
