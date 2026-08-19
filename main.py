@@ -19,14 +19,29 @@ app.add_middleware(
 
 TELEGRAM_TOKEN = "8899732413:AAE7wHYoHYhvePxlxuKCzndeVRdqkOTaCFo"
 
-def simplificar_nombre(texto):
+# Diccionario de equivalencias directas para asegurar que ningún canal se quede sin enlace
+MAPEO_CANALES = {
+    "m+ vamos": "vamos",
+    "m+ deportes": "deportes",
+    "movistar plus": "movistar plus",
+    "movistar+": "movistar plus",
+    "m+ liga de campeones": "ligadecampeones",
+    "m+ liga de campeones 2": "ligadecampeones2",
+    "m+ liga de campeones 3": "ligadecampeones3",
+    "m+ liga de campeones 4": "ligadecampeones4",
+    "dazn laliga": "daznlaliga",
+    "laliga tv hypermotion": "hypermotion",
+    "teledeporte": "teledeporte",
+    "m+ golf 2": "golf",
+    "tv3": "tv3"
+}
+
+def limpiar(texto):
     if not texto: return ""
     n = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
-    n = n.replace("movistar plus+", "mplus").replace("movistar plus", "mplus").replace("movistar+", "mplus").replace("m+", "mplus").replace("movistar", "mplus")
-    for b in ["1080p", "720p", "1080", "720", "4k", "hd", "fhd", "uhd"]:
+    for b in ["1080p", "720p", "1080", "720", "4k", "hd", "fhd", "uhd", "*"]:
         n = n.replace(b, "")
-    n = re.sub(r'[^a-z0-9]', '', n)
-    return n
+    return re.sub(r'[^a-z0-9]', '', n)
 
 def obtener_agenda_datos():
     lista_canales = []
@@ -56,14 +71,12 @@ def obtener_agenda_datos():
     if not items:
         items = soup.find_all('li')
 
-    # Palabras clave prohibidas para evitar basura y falsos eventos
     palabras_prohibidas = ["ver más", "actualizado", "resultados", "programación deportiva", "lunes", "martes", "miércoles", "miercoles", "jueves", "viernes", "sábado", "sabado", "domingo"]
 
     for item in items:
         texto_completo = item.get_text(separator="|", strip=True)
         texto_lower = texto_completo.lower()
 
-        # Si contiene palabras prohibidas o no tiene formato de partido, lo ignoramos
         if any(p in texto_lower for p in palabras_prohibidas):
             continue
 
@@ -78,25 +91,29 @@ def obtener_agenda_datos():
                 partido = partes[-2] if len(partes) >= 4 else partes[1]
                 canal_marca = partes[-1]
                 
-                # Descartar si el partido es genérico o basura
                 if len(partido) < 3 or "resultados" in partido.lower():
                     continue
 
-                # Cruce de canales con GitHub
-                canal_limpio = simplificar_nombre(canal_marca)
+                # --- BÚSQUEDA INTELIGENTE DE HASH ---
                 hash_acestream = ""
                 logo_canal = ""
                 
-                if canal_limpio and lista_canales:
+                if lista_canales:
+                    canal_key = canal_marca.lower().strip()
+                    clave_busqueda = MAPEO_CANALES.get(canal_key, limpiar(canal_marca))
+                    
+                    # Buscamos coincidencia en tu JSON
                     for c in lista_canales:
                         if not isinstance(c, dict): continue
-                        titulo_json = simplificar_nombre(c.get("title", ""))
-                        tvgid_json = simplificar_nombre(c.get("tvg_id", ""))
+                        t_json = limpiar(c.get("title", ""))
+                        tvg_json = limpiar(c.get("tvg_id", ""))
                         
-                        if canal_limpio == titulo_json or canal_limpio == tvgid_json or (len(canal_limpio) > 3 and (canal_limpio in titulo_json or canal_limpio in tvgid_json)):
+                        if clave_busqueda in t_json or clave_busqueda in tvg_json or t_json in clave_busqueda:
                             hash_acestream = c.get("hash", "")
                             logo_canal = c.get("logo", "")
-                            if "1080" in c.get("title", ""): break
+                            # Priorizamos siempre la versión 1080p si existe en tu lista
+                            if "1080" in c.get("title", ""):
+                                break
 
                 evento_obj = {
                     "dia": "Próximos Partidos",
@@ -109,7 +126,6 @@ def obtener_agenda_datos():
                     "logo": logo_canal
                 }
                 
-                # Evitamos duplicados exactos
                 if evento_obj not in eventos:
                     eventos.append(evento_obj)
 
