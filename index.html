@@ -128,11 +128,14 @@
                         `;
                     });
                 } else {
-                    alert("Error: " + datos.detail);
+                    // Si el servidor de Python devuelve un error controlado
+                    alert("Error del servidor: " + datos.detail);
                 }
             } catch (error) {
+                // Si la conexión falla de golpe (ej. CORS, red caída, respuesta rota)
                 loader.style.display = "none";
-                alert("Error de conexión con el servidor.");
+                alert("Fallo exacto: " + error.message);
+                console.error("Detalle completo del error:", error);
             }
         }
     </script>
