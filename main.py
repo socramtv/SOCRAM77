@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import requests
 from bs4 import BeautifulSoup
-import re
 import os
 
 app = FastAPI(title="Extractor de TV Marca")
@@ -38,69 +37,46 @@ def extraer_programacion():
 
     soup = BeautifulSoup(response.text, 'html.parser')
     eventos = []
+
+    # 1. Buscamos el contenedor principal exacto que aloja los días
+    lista_dias = soup.find('ol', class_='daylist')
     
-    dia_actual = "Hoy"
-    dias_semana = ['lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado', 'domingo']
+    if not lista_dias:
+        return {"total": 0, "eventos": []}
 
-    for item in soup.find_all(['li', 'h2', 'div']):
-        texto_crudo = item.get_text(separator="|", strip=True)
-        texto_crudo = re.sub(r'\|+', '|', texto_crudo)
-        partes = [p.strip() for p in texto_crudo.split('|') if p.strip()]
-
-        if not partes: continue
-
-        # Buscar exactamente la posición de la hora (formato HH:MM)
-        indice_hora = -1
-        for i, p in enumerate(partes):
-            if re.match(r'^\d{2}:\d{2}$', p):
-                indice_hora = i
-                break
+    # 2. Iteramos solo por los bloques de los días (<li class="content-item">)
+    for bloque_dia in lista_dias.find_all('li', class_='content-item', recursive=False):
         
-        # 1. Si no hay hora, comprobamos si es un separador de día puro
-        if indice_hora == -1:
-            texto_junto = " ".join(partes).lower()
-            if any(d in texto_junto for d in dias_semana) and len(partes) <= 2 and "programación" not in texto_junto:
-                dia_actual = partes[0].replace('-', '').strip().capitalize()
+        # Extraemos el título del día (Ej: Miércoles 19 de Agosto de 2026)
+        nodo_titulo = bloque_dia.find('span', class_='title-section-widget')
+        if not nodo_titulo:
             continue
+            
+        dia_semana = nodo_titulo.find('strong').get_text(strip=True) if nodo_titulo.find('strong') else ""
+        fecha_resto = nodo_titulo.get_text(strip=True).replace(dia_semana, "", 1).strip()
+        dia_completo = f"{dia_semana} {fecha_resto}"
 
-        # 2. Si hay hora, procesamos y extraemos el evento real
-        if indice_hora > 0:
-            deporte = partes[indice_hora - 1]
-            hora = partes[indice_hora]
-            
-            # Si hay texto antes del deporte, Marca ha colado la fecha en la misma línea
-            if indice_hora >= 2:
-                posible_dia = partes[0].replace('-', '').strip().capitalize()
-                if any(d in posible_dia.lower() for d in dias_semana):
-                    dia_actual = posible_dia
-            
-            resto = partes[indice_hora + 1:]
-            
-            if len(resto) >= 3:
-                competicion = resto[0]
-                partido = resto[1]
-                canal = resto[-1]
-            elif len(resto) == 2:
-                competicion = ""
-                partido = resto[0]
-                canal = resto[1]
-            elif len(resto) == 1:
-                competicion = ""
-                partido = resto[0]
-                canal = ""
-            else:
-                continue # Faltan datos críticos, lo ignoramos
+        # 3. Iteramos exactamente por cada evento de ese día (<li class="dailyevent">)
+        for evento in bloque_dia.find_all('li', class_='dailyevent'):
+            try:
+                # Vamos directamente a por la clase exacta de cada dato
+                deporte = evento.find('span', class_='dailyday').get_text(strip=True)
+                hora = evento.find('strong', class_='dailyhour').get_text(strip=True)
+                competicion = evento.find('span', class_='dailycompetition').get_text(strip=True)
+                partido = evento.find('h4', class_='dailyteams').get_text(strip=True)
+                canal = evento.find('span', class_='dailychannel').get_text(strip=True)
 
-            evento_obj = {
-                "dia": dia_actual,
-                "deporte": deporte,
-                "hora": hora,
-                "competicion": competicion,
-                "partido": partido,
-                "canal": canal
-            }
-            
-            if evento_obj not in eventos:
-                eventos.append(evento_obj)
+                eventos.append({
+                    "dia": dia_completo,
+                    "deporte": deporte,
+                    "hora": hora,
+                    "competicion": competicion,
+                    "partido": partido,
+                    "canal": canal
+                })
+            except AttributeError:
+                # Si a Marca se le olvida poner la hora o el canal en un evento raro, 
+                # lo ignoramos silenciosamente para que la app no se cuelgue
+                continue
 
     return {"total": len(eventos), "eventos": eventos}
