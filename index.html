@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extractor de Enlaces</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h2 { text-align: center; margin-top: 0; }
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            background-color: #2c2c2c;
+            color: white;
+            outline: none;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background-color: #0056b3; }
+        .loader { display: none; text-align: center; color: #aaa; margin-bottom: 20px; }
+        .result-card {
+            background-color: #2c2c2c;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #007bff;
+        }
+        .result-card a {
+            color: #4da3ff;
+            text-decoration: none;
+            font-size: 0.9em;
+            word-break: break-all;
+        }
+        .result-card a:hover { text-decoration: underline; }
+        .copy-btn {
+            background-color: #444;
+            padding: 5px 10px;
+            font-size: 0.8em;
+            border-radius: 3px;
+        }
+        .copy-btn:hover { background-color: #555; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>🔗 Extractor Web</h2>
+        <div class="search-box">
+            <input type="text" id="urlInput" placeholder="Pega el enlace aquí (ej: https://hubu.ru/...)" value="https://hubu.ru/fctvlink">
+            <button onclick="extraer()">Extraer</button>
+        </div>
+        
+        <div id="loader" class="loader">Analizando la web, por favor espera...</div>
+        <div id="resultados"></div>
+    </div>
+
+    <script>
+        async function extraer() {
+            const url = document.getElementById('urlInput').value;
+            const loader = document.getElementById('loader');
+            const contenedorResultados = document.getElementById('resultados');
+            
+            if(!url) return alert("Por favor, introduce una URL");
+
+            contenedorResultados.innerHTML = "";
+            loader.style.display = "block";
+
+            try {
+                // Llama a la API (FastAPI) de la ruta /extraer
+                const respuesta = await fetch('/extraer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+
+                const datos = await respuesta.json();
+                loader.style.display = "none";
+
+                if(respuesta.ok) {
+                    if(datos.enlaces.length === 0) {
+                        contenedorResultados.innerHTML = "<p style='text-align:center; color:#aaa;'>No se encontraron enlaces válidos.</p>";
+                        return;
+                    }
+                    
+                    datos.enlaces.forEach(link => {
+                        contenedorResultados.innerHTML += `
+                            <div class="result-card">
+                                <div>
+                                    <strong>${link.titulo}</strong><br>
+                                    <a href="${link.url}" target="_blank">${link.url}</a>
+                                </div>
+                                <button class="copy-btn" onclick="navigator.clipboard.writeText('${link.url}')">Copiar</button>
+                            </div>
+                        `;
+                    });
+                } else {
+                    alert("Error: " + datos.detail);
+                }
+            } catch (error) {
+                loader.style.display = "none";
+                alert("Error de conexión con el servidor.");
+            }
+        }
+    </script>
+</body>
+</html>
