@@ -35,7 +35,7 @@ def cargar_interfaz():
 
 @app.post("/extraer")
 def extraer_programacion():
-    # 1. Descargamos tu lista de GitHub de forma segura
+    # 1. Intentamos descargar tu lista de GitHub de forma segura
     lista_canales = []
     try:
         url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/refs/heads/main/hashes.json"
@@ -43,34 +43,66 @@ def extraer_programacion():
         if resp_json.status_code == 200:
             lista_canales = resp_json.json()
     except Exception as e:
-        print("Aviso: No se pudo cargar el JSON, continuando sin enlaces:", e)
+        print("Aviso: No se pudo cargar el JSON:", e)
 
     # 2. Descargamos la web de Marca
     url_marca = "https://www.marca.com/programacion-tv.html"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
     try:
-        response = requests.get(url_marca, headers=headers, timeout=10)
+        response = requests.get(url_marca, headers=headers, timeout=12)
         response.raise_for_status()
-    except requests.exceptions.RequestException:
-        raise HTTPException(status_code=400, detail="Error al acceder a Marca.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al acceder a Marca: {str(e)}")
 
     soup = BeautifulSoup(response.text, 'html.parser')
     eventos = []
     
-    lista_dias = soup.find('ol', class_='daylist')
-    if not lista_dias: 
-        return {"total": 0, "eventos": []}
+    # 3. Método inteligente: Buscamos todos los bloques de días disponibles
+    bloques_dia = soup.find_all('li', class_='content-item')
+    
+    if bloques_dia:
+        for bloque_dia in bloques_dia:
+            nodo_titulo = bloque_dia.find('span', class_='title-section-widget')
+            dia_completo = nodo_titulo.get_text(strip=True) if nodo_titulo else "Programación"
 
-    for bloque_dia in lista_dias.find_all('li', class_='content-item', recursive=False):
-        nodo_titulo = bloque_dia.find('span', class_='title-section-widget')
-        if not nodo_titulo: continue
-            
-        dia_semana = nodo_titulo.find('strong').get_text(strip=True) if nodo_titulo.find('strong') else ""
-        fecha_resto = nodo_titulo.get_text(strip=True).replace(dia_semana, "", 1).strip()
-        dia_completo = f"{dia_semana} {fecha_resto}"
+            for evento in bloque_dia.find_all('li', class_='dailyevent'):
+                try:
+                    deporte = evento.find('span', class_='dailyday').get_text(strip=True)
+                    hora = evento.find('strong', class_='dailyhour').get_text(strip=True)
+                    competicion = evento.find('span', class_='dailycompetition').get_text(strip=True)
+                    partido = evento.find('h4', class_='dailyteams').get_text(strip=True)
+                    canal_marca = evento.find('span', class_='dailychannel').get_text(strip=True)
 
-        for evento in bloque_dia.find_all('li', class_='dailyevent'):
+                    # Cruce de canales con GitHub
+                    canal_limpio = simplificar_nombre(canal_marca)
+                    hash_acestream, logo_canal = "", ""
+                    
+                    if canal_limpio and lista_canales:
+                        for c in lista_canales:
+                            titulo_json = simplificar_nombre(c.get("title", ""))
+                            tvgid_json = simplificar_nombre(c.get("tvg_id", ""))
+                            if canal_limpio == titulo_json or canal_limpio == tvgid_json or (len(canal_limpio) > 3 and (canal_limpio in titulo_json or canal_limpio in tvgid_json)):
+                                hash_acestream = c.get("hash", "")
+                                logo_canal = c.get("logo", "")
+                                if "1080" in c.get("title", ""): break
+
+                    eventos.append({
+                        "dia": dia_completo,
+                        "deporte": deporte,
+                        "hora": hora,
+                        "competicion": competicion,
+                        "partido": partido,
+                        "canal": canal_marca,
+                        "hash": hash_acestream,
+                        "logo": logo_canal
+                    })
+                except AttributeError:
+                    continue
+    
+    # 4. Plan de emergencia: Si por lo que sea los bloques de días fallan, cazamos todos los eventos sueltos de la web
+    if not eventos:
+        for evento in soup.find_all('li', class_='dailyevent'):
             try:
                 deporte = evento.find('span', class_='dailyday').get_text(strip=True)
                 hora = evento.find('strong', class_='dailyhour').get_text(strip=True)
@@ -78,45 +110,17 @@ def extraer_programacion():
                 partido = evento.find('h4', class_='dailyteams').get_text(strip=True)
                 canal_marca = evento.find('span', class_='dailychannel').get_text(strip=True)
 
-                canal_limpio = simplificar_nombre(canal_marca)
-                coincidencias = []
-                
-                if canal_limpio and lista_canales:
-                    for c in lista_canales:
-                        titulo_json = simplificar_nombre(c.get("title", ""))
-                        tvgid_json = simplificar_nombre(c.get("tvg_id", ""))
-                        
-                        if canal_limpio == titulo_json or canal_limpio == tvgid_json:
-                            coincidencias.append(c)
-                        elif len(canal_limpio) > 3 and (canal_limpio in titulo_json or canal_limpio in tvgid_json):
-                            coincidencias.append(c)
-
-                hash_acestream = ""
-                logo_canal = ""
-
-                if coincidencias:
-                    mejor_opcion = coincidencias[0]
-                    for op in coincidencias:
-                        if "1080" in op.get("title", ""):
-                            mejor_opcion = op
-                            break
-                        elif "720" in op.get("title", "") and "1080" not in mejor_opcion.get("title", ""):
-                            mejor_opcion = op
-                    
-                    hash_acestream = mejor_opcion.get("hash", "")
-                    logo_canal = mejor_opcion.get("logo", "")
-
                 eventos.append({
-                    "dia": dia_completo,
+                    "dia": "Próximos Eventos",
                     "deporte": deporte,
                     "hora": hora,
                     "competicion": competicion,
                     "partido": partido,
                     "canal": canal_marca,
-                    "hash": hash_acestream,
-                    "logo": logo_canal
+                    "hash": "",
+                    "logo": ""
                 })
-            except AttributeError:
+            except:
                 continue
 
     return {"total": len(eventos), "eventos": eventos}
