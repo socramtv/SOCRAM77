@@ -18,27 +18,11 @@ app.add_middleware(
 )
 
 def simplificar_nombre(texto):
-    """
-    Este es el limpiador extremo. Destruye la basura para que 
-    'DAZN LaLiga 1080p **' y 'DAZN LALIGA' sean exactamente iguales.
-    """
     if not texto: return ""
-    # 1. Quitar acentos y pasar a minúsculas
     n = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
-    
-    # 2. Unificar M+ y Movistar
-    n = n.replace("movistar plus+", "mplus")
-    n = n.replace("movistar plus", "mplus")
-    n = n.replace("movistar+", "mplus")
-    n = n.replace("m+", "mplus")
-    n = n.replace("movistar", "mplus")
-    
-    # 3. Quitar calidades (1080p, HD, etc.)
-    basura = ["1080p", "720p", "1080", "720", "4k", "hd", "fhd", "uhd"]
-    for b in basura:
+    n = n.replace("movistar plus+", "mplus").replace("movistar plus", "mplus").replace("movistar+", "mplus").replace("m+", "mplus").replace("movistar", "mplus")
+    for b in ["1080p", "720p", "1080", "720", "4k", "hd", "fhd", "uhd"]:
         n = n.replace(b, "")
-        
-    # 4. Eliminar todo lo que NO sea letra o número (quita espacios, asteriscos, guiones...)
     n = re.sub(r'[^a-z0-9]', '', n)
     return n
 
@@ -51,14 +35,15 @@ def cargar_interfaz():
 
 @app.post("/extraer")
 def extraer_programacion():
-    # 1. Descargamos tu lista de GitHub (Usamos tu nuevo enlace y damos 15 segundos)
-    url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/refs/heads/main/hashes.json"
+    # 1. Descargamos tu lista de GitHub de forma segura
+    lista_canales = []
     try:
-        resp_json = requests.get(url_json, timeout=15)
-        lista_canales = resp_json.json()
+        url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/refs/heads/main/hashes.json"
+        resp_json = requests.get(url_json, timeout=8)
+        if resp_json.status_code == 200:
+            lista_canales = resp_json.json()
     except Exception as e:
-        print("Aviso: No se pudo cargar el JSON -", e)
-        lista_canales = [] # Si falla, no rompemos la app, solo saldrá sin enlaces
+        print("Aviso: No se pudo cargar el JSON, continuando sin enlaces:", e)
 
     # 2. Descargamos la web de Marca
     url_marca = "https://www.marca.com/programacion-tv.html"
@@ -74,7 +59,8 @@ def extraer_programacion():
     eventos = []
     
     lista_dias = soup.find('ol', class_='daylist')
-    if not lista_dias: return {"total": 0, "eventos": []}
+    if not lista_dias: 
+        return {"total": 0, "eventos": []}
 
     for bloque_dia in lista_dias.find_all('li', class_='content-item', recursive=False):
         nodo_titulo = bloque_dia.find('span', class_='title-section-widget')
@@ -92,27 +78,23 @@ def extraer_programacion():
                 partido = evento.find('h4', class_='dailyteams').get_text(strip=True)
                 canal_marca = evento.find('span', class_='dailychannel').get_text(strip=True)
 
-                # --- EL NUEVO CEREBRO DE CRUCE INQUEBRANTABLE ---
                 canal_limpio = simplificar_nombre(canal_marca)
                 coincidencias = []
                 
-                if canal_limpio:
+                if canal_limpio and lista_canales:
                     for c in lista_canales:
                         titulo_json = simplificar_nombre(c.get("title", ""))
                         tvgid_json = simplificar_nombre(c.get("tvg_id", ""))
                         
-                        # Si tras quitar espacios, asteriscos y calidades son idénticos
                         if canal_limpio == titulo_json or canal_limpio == tvgid_json:
                             coincidencias.append(c)
-                        # Si no es idéntico pero está contenido (y tiene longitud para no dar falsos positivos)
-                        elif len(canal_limpio) > 4 and (canal_limpio in titulo_json or canal_limpio in tvgid_json):
+                        elif len(canal_limpio) > 3 and (canal_limpio in titulo_json or canal_limpio in tvgid_json):
                             coincidencias.append(c)
 
                 hash_acestream = ""
                 logo_canal = ""
 
                 if coincidencias:
-                    # Prioridad: Buscar el 1080p
                     mejor_opcion = coincidencias[0]
                     for op in coincidencias:
                         if "1080" in op.get("title", ""):
