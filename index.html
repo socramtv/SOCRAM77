@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Programación Deportiva</title>
+    <title>Agenda TV & Acestream</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -19,7 +19,7 @@
             width: 100%;
             max-width: 600px;
         }
-        button {
+        .btn-cargar {
             padding: 15px;
             background-color: #ff0000;
             color: white;
@@ -32,10 +32,9 @@
             margin-bottom: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        button:hover { background-color: #cc0000; }
+        .btn-cargar:hover { background-color: #cc0000; }
         .loader { display: none; text-align: center; color: #555; font-weight: bold; margin-bottom: 20px; }
         
-        /* Contador total */
         .total-card {
             background-color: #ffffff;
             padding: 15px;
@@ -46,7 +45,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        /* Separador de los Días */
         .day-separator {
             background-color: #ff0000;
             color: white;
@@ -59,7 +57,6 @@
             box-shadow: 0 4px 6px rgba(255,0,0,0.2);
         }
         
-        /* Tarjetas de los partidos */
         .result-card {
             background-color: #ffffff;
             padding: 15px;
@@ -70,15 +67,52 @@
             line-height: 1.6;
             border-left: 5px solid #2c2c2c;
         }
+        
+        /* Resalta las tarjetas que tienen enlace listo */
+        .card-con-enlace { border-left: 5px solid #28a745; }
+
         .row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
         .emoji { font-size: 1.2em; min-width: 25px; text-align: center; }
+        
+        .logo-canal { height: 20px; vertical-align: middle; margin-right: 5px; border-radius: 3px; }
+        
+        /* Botones de Acestream */
+        .botones-stream {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+        .btn-play {
+            flex: 2;
+            background-color: #ff6600; /* Color Acestream */
+            color: white;
+            text-decoration: none;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.95em;
+        }
+        .btn-copy {
+            flex: 1;
+            background-color: #444;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95em;
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <button onclick="extraer()">Cargar Programación TV</button>
-        <div id="loader" class="loader">Consultando eventos, por favor espera...</div>
+        <button class="btn-cargar" onclick="extraer()">Cargar Agenda y Enlaces</button>
+        <div id="loader" class="loader">Cruzando datos con GitHub, por favor espera...</div>
         <div id="resultados"></div>
     </div>
 
@@ -102,43 +136,41 @@
             loader.style.display = "block";
 
             try {
-                const respuesta = await fetch('/extraer', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-
+                const respuesta = await fetch('/extraer', { method: 'POST' });
                 const datos = await respuesta.json();
                 loader.style.display = "none";
 
                 if(respuesta.ok) {
                     if(datos.eventos.length === 0) {
-                        contenedorResultados.innerHTML = "<div class='total-card'>No se encontraron eventos en este momento.</div>";
+                        contenedorResultados.innerHTML = "<div class='total-card'>No se encontraron eventos.</div>";
                         return;
                     }
 
-                    // 1. Agrupar los eventos por día
                     const eventosPorDia = {};
+                    let totalConEnlace = 0;
+
                     datos.eventos.forEach(ev => {
                         if (!eventosPorDia[ev.dia]) eventosPorDia[ev.dia] = [];
                         eventosPorDia[ev.dia].push(ev);
+                        if (ev.hash) totalConEnlace++;
                     });
 
-                    // 2. Imprimir el total
                     let htmlContenido = `
                         <div class="total-card">
-                            <span class="emoji">🏆</span> 
-                            <strong>Número total de eventos: ${datos.total}</strong>
+                            <span class="emoji">📡</span> 
+                            <strong>${datos.total} Eventos | ${totalConEnlace} listos para reproducir</strong>
                         </div>
                     `;
                     
-                    // 3. Imprimir el separador de día y sus tarjetas correspondientes
                     for (const [dia, eventos] of Object.entries(eventosPorDia)) {
                         htmlContenido += `<div class="day-separator">📅 ${dia}</div>`;
                         
                         eventos.forEach(evento => {
                             const emojiDeporte = obtenerEmojiDeporte(evento.deporte);
+                            const claseBorde = evento.hash ? "result-card card-con-enlace" : "result-card";
+                            
                             htmlContenido += `
-                                <div class="result-card">
+                                <div class="${claseBorde}">
                                     <div class="row">
                                         <span class="emoji">${emojiDeporte}</span> 
                                         <span><strong>${evento.deporte}</strong> - ${evento.hora}</span>
@@ -161,10 +193,24 @@
                                     </div>
                                     <div class="row">
                                         <span class="emoji">📺</span> 
-                                        <span>${evento.canal}</span>
+                                        <span>
+                                            ${evento.logo ? `<img src="${evento.logo}" class="logo-canal">` : ''}
+                                            ${evento.canal}
+                                        </span>
                                     </div>
-                                </div>
                             `;
+
+                            // Si encontró un hash en tu JSON, dibuja los botones
+                            if (evento.hash) {
+                                htmlContenido += `
+                                    <div class="botones-stream">
+                                        <a href="acestream://${evento.hash}" class="btn-play">▶ Ver en Acestream</a>
+                                        <button class="btn-copy" onclick="navigator.clipboard.writeText('${evento.hash}'); alert('Hash copiado!');">Copiar Hash</button>
+                                    </div>
+                                `;
+                            }
+
+                            htmlContenido += `</div>`;
                         });
                     }
 
