@@ -119,8 +119,14 @@ def extraer_programacion():
 
 @app.get("/test-scraping")
 def test_scraping():
-    eventos = obtener_agenda_datos()
-    return {"total_procesados": len(eventos), "muestra": eventos[:3]}
+    import traceback
+    try:
+        eventos = obtener_agenda_datos()
+        return {"total_procesados": len(eventos), "muestra": eventos[:3]}
+    except Exception as e:
+        # Esto imprimirá el error exacto en pantalla para ver dónde falla
+        return {"error_critico": str(e), "detalle": traceback.format_exc()}
+ 
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
