@@ -101,6 +101,25 @@ def cargar_interfaz():
             return f.read()
     return "<h1>Falta el archivo index.html</h1>"
 
+
+@app.get("/test-scraping")
+def test_scraping():
+    # Comprobamos si Marca responde
+    url_marca = "https://www.marca.com/programacion-tv.html"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    try:
+        r = requests.get(url_marca, headers=headers, timeout=10)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        eventos_raw = soup.find_all('li', class_='dailyevent')
+        return {
+            "estado_marca": r.status_code,
+            "eventos_encontrados_en_bruto": len(eventos_raw)
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+
 @app.post("/extraer")
 def extraer_programacion():
     eventos = obtener_agenda_datos()
