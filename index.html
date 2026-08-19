@@ -7,7 +7,7 @@
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f0f2f5; /* Fondo más claro para destacar las tarjetas */
+            background-color: #f0f2f5;
             color: #000000;
             margin: 0;
             padding: 15px;
@@ -35,26 +35,40 @@
         button:hover { background-color: #cc0000; }
         .loader { display: none; text-align: center; color: #555; font-weight: bold; margin-bottom: 20px; }
         
-        /* Estilo de la cabecera (Fecha y total) */
-        .header-card {
-            background-color: #ffffff;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            font-size: 1.2em;
-            line-height: 1.8;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        /* Estilo de cada evento igual a tu imagen */
-        .result-card {
+        /* Contador total */
+        .total-card {
             background-color: #ffffff;
             padding: 15px;
             border-radius: 10px;
             margin-bottom: 15px;
+            font-size: 1.2em;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Separador de los Días */
+        .day-separator {
+            background-color: #ff0000;
+            color: white;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin: 25px 0 15px 0;
+            font-size: 1.3em;
+            font-weight: bold;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(255,0,0,0.2);
+        }
+        
+        /* Tarjetas de los partidos */
+        .result-card {
+            background-color: #ffffff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 12px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             font-size: 1.1em;
             line-height: 1.6;
+            border-left: 5px solid #2c2c2c;
         }
         .row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
         .emoji { font-size: 1.2em; min-width: 25px; text-align: center; }
@@ -64,13 +78,11 @@
 
     <div class="container">
         <button onclick="extraer()">Cargar Programación TV</button>
-        
         <div id="loader" class="loader">Consultando eventos, por favor espera...</div>
         <div id="resultados"></div>
     </div>
 
     <script>
-        // Función para elegir el emoji correcto según el deporte
         function obtenerEmojiDeporte(deporte) {
             const dep = deporte.toLowerCase();
             if(dep.includes('fútbol') || dep.includes('futbol')) return '⚽';
@@ -79,14 +91,7 @@
             if(dep.includes('motor') || dep.includes('f1') || dep.includes('motogp')) return '🏎️';
             if(dep.includes('ciclismo')) return '🚴';
             if(dep.includes('balonmano')) return '🤾';
-            return '🏅'; // Por defecto
-        }
-
-        // Función para formatear la fecha actual en español
-        function obtenerFechaActual() {
-            const opciones = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            let fecha = new Date().toLocaleDateString('es-ES', opciones);
-            return fecha.charAt(0).toUpperCase() + fecha.slice(1);
+            return '🏅'; 
         }
 
         async function extraer() {
@@ -99,8 +104,7 @@
             try {
                 const respuesta = await fetch('/extraer', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: "marca" }) 
+                    headers: { 'Content-Type': 'application/json' }
                 });
 
                 const datos = await respuesta.json();
@@ -108,57 +112,61 @@
 
                 if(respuesta.ok) {
                     if(datos.eventos.length === 0) {
-                        contenedorResultados.innerHTML = "<div class='header-card'>No se encontraron eventos en este momento.</div>";
+                        contenedorResultados.innerHTML = "<div class='total-card'>No se encontraron eventos en este momento.</div>";
                         return;
                     }
 
-                    // 1. Imprimir la cabecera con la fecha y el total de eventos
+                    // 1. Agrupar los eventos por día
+                    const eventosPorDia = {};
+                    datos.eventos.forEach(ev => {
+                        if (!eventosPorDia[ev.dia]) eventosPorDia[ev.dia] = [];
+                        eventosPorDia[ev.dia].push(ev);
+                    });
+
+                    // 2. Imprimir el total
                     let htmlContenido = `
-                        <div class="header-card">
-                            <div class="row">
-                                <span class="emoji">📆</span> 
-                                <span>${obtenerFechaActual()} 📆</span>
-                            </div>
-                            <div class="row">
-                                <span class="emoji">🏆</span> 
-                                <span>Número total de eventos hoy: ${datos.total}</span>
-                            </div>
+                        <div class="total-card">
+                            <span class="emoji">🏆</span> 
+                            <strong>Número total de eventos: ${datos.total}</strong>
                         </div>
                     `;
                     
-                    // 2. Imprimir cada tarjeta de evento con el formato exacto
-                    datos.eventos.forEach(evento => {
-                        const emojiDeporte = obtenerEmojiDeporte(evento.deporte);
+                    // 3. Imprimir el separador de día y sus tarjetas correspondientes
+                    for (const [dia, eventos] of Object.entries(eventosPorDia)) {
+                        htmlContenido += `<div class="day-separator">📅 ${dia}</div>`;
                         
-                        htmlContenido += `
-                            <div class="result-card">
-                                <div class="row">
-                                    <span class="emoji">${emojiDeporte}</span> 
-                                    <span>${evento.deporte} - ${evento.hora}</span>
-                                </div>
-                        `;
-
-                        if (evento.competicion) {
+                        eventos.forEach(evento => {
+                            const emojiDeporte = obtenerEmojiDeporte(evento.deporte);
                             htmlContenido += `
-                                <div class="row">
-                                    <span class="emoji">🏆</span> 
-                                    <span>${evento.competicion}</span>
+                                <div class="result-card">
+                                    <div class="row">
+                                        <span class="emoji">${emojiDeporte}</span> 
+                                        <span><strong>${evento.deporte}</strong> - ${evento.hora}</span>
+                                    </div>
+                            `;
+
+                            if (evento.competicion) {
+                                htmlContenido += `
+                                    <div class="row">
+                                        <span class="emoji">🏆</span> 
+                                        <span>${evento.competicion}</span>
+                                    </div>
+                                `;
+                            }
+
+                            htmlContenido += `
+                                    <div class="row">
+                                        <span class="emoji">🆚</span> 
+                                        <span>${evento.partido}</span>
+                                    </div>
+                                    <div class="row">
+                                        <span class="emoji">📺</span> 
+                                        <span>${evento.canal}</span>
+                                    </div>
                                 </div>
                             `;
-                        }
-
-                        htmlContenido += `
-                                <div class="row">
-                                    <span class="emoji">🆚</span> 
-                                    <span>${evento.partido}</span>
-                                </div>
-                                <div class="row">
-                                    <span class="emoji">📺</span> 
-                                    <span>${evento.canal}</span>
-                                </div>
-                            </div>
-                        `;
-                    });
+                        });
+                    }
 
                     contenedorResultados.innerHTML = htmlContenido;
 
@@ -167,7 +175,7 @@
                 }
             } catch (error) {
                 loader.style.display = "none";
-                alert("Fallo de conexión: " + error.message);
+                alert("Fallo de conexión. Asegúrate de tener conexión a internet.");
             }
         }
     </script>
