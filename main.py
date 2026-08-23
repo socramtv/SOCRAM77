@@ -19,6 +19,30 @@ app.add_middleware(
 
 TELEGRAM_TOKEN = "8899732413:AAE7wHYoHYhvePxlxuKCzndeVRdqkOTaCFo"
 
+# Diccionario ampliado con los canales de tu captura
+MAPEO_CANALES = {
+    "m+ vamos": "vamos",
+    "m+ vamos 2": "vamos",
+    "m+ deportes": "deportes",
+    "movistar plus": "movistar plus",
+    "movistar+": "movistar plus",
+    "m+ liga de campeones": "ligadecampeones",
+    "m+ liga de campeones 2": "ligadecampeones2",
+    "m+ liga de campeones 3": "ligadecampeones3",
+    "m+ liga de campeones 4": "ligadecampeones4",
+    "dazn laliga": "daznlaliga",
+    "laliga tv hypermotion": "hypermotion",
+    "teledeporte": "teledeporte",
+    "teledeporte / la 2": "teledeporte",
+    "la 2": "la2",
+    "m+ golf 2": "golf",
+    "tv3": "tv3",
+    "dazn 1": "dazn1",
+    "dazn 2": "dazn2",
+    "dazn f1": "daznf1",
+    "gol": "gol"
+}
+
 def limpiar(texto):
     if not texto: return ""
     n = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
@@ -50,66 +74,74 @@ def obtener_agenda_datos():
     soup = BeautifulSoup(response.text, 'html.parser')
     eventos = []
     
-    items = soup.find_all(['li', 'div'], class_=re.compile('event|item|row|match|schedule', re.I))
-    if not items:
-        items = soup.find_all('li')
+    # Vamos directos a cazar la clase exacta de los eventos
+    for evento in soup.find_all('li', class_='dailyevent'):
+        try:
+            # 1. Recuperamos el día mirando hacia atrás en el HTML
+            nodo_titulo = evento.find_previous('span', class_='title-section-widget')
+            if nodo_titulo:
+                dia_semana = nodo_titulo.find('strong').get_text(strip=True) if nodo_titulo.find('strong') else ""
+                fecha_resto = nodo_titulo.get_text(strip=True).replace(dia_semana, "", 1).strip()
+                dia_completo = f"{dia_semana} {fecha_resto}".strip()
+            else:
+                dia_completo = "Agenda Deportiva"
 
-    palabras_prohibidas = ["ver más", "actualizado", "resultados", "programación deportiva", "lunes", "martes", "miércoles", "miercoles", "jueves", "viernes", "sábado", "sabado", "domingo"]
+            # 2. Recuperamos TODOS los datos, incluyendo la competición
+            deporte_tag = evento.find(class_='dailyday')
+            deporte = deporte_tag.get_text(strip=True) if deporte_tag else "Deporte"
 
-    for item in items:
-        texto_completo = item.get_text(separator="|", strip=True)
-        texto_lower = texto_completo.lower()
+            hora_tag = evento.find(class_='dailyhour')
+            hora = hora_tag.get_text(strip=True) if hora_tag else "00:00"
 
-        if any(p in texto_lower for p in palabras_prohibidas):
-            continue
+            comp_tag = evento.find(class_='dailycompetition')
+            competicion = comp_tag.get_text(strip=True) if comp_tag else ""
 
-        match_hora = re.search(r'\b\d{2}:\d{2}\b', texto_completo)
-        
-        if match_hora:
-            hora = match_hora.group(0)
-            partes = [p.strip() for p in texto_completo.split('|') if p.strip()]
+            partido_tag = evento.find(class_='dailyteams')
+            partido = partido_tag.get_text(strip=True) if partido_tag else "Evento deportivo"
+
+            canal_tag = evento.find(class_='dailychannel')
+            canal_marca = canal_tag.get_text(strip=True) if canal_tag else "TV"
+
+            # Filtro antibasura
+            if len(partido) < 3 or "resultados" in partido.lower():
+                continue
+
+            # 3. Cruce Inteligente con tus enlaces de GitHub
+            hash_acestream = ""
+            logo_canal = ""
             
-            if len(partes) >= 3:
-                deporte = partes[0] if len(partes[0]) < 15 else "Fútbol"
-                partido = partes[-2] if len(partes) >= 4 else partes[1]
-                canal_marca = partes[-1]
+            if lista_canales:
+                canal_key = canal_marca.lower().strip()
+                clave_busqueda = MAPEO_CANALES.get(canal_key, limpiar(canal_marca))
                 
-                if len(partido) < 3 or "resultados" in partido.lower():
-                    continue
-
-                # --- BÚSQUEDA FLEXIBLE DE HASH EN GITHUB ---
-                hash_acestream = ""
-                logo_canal = ""
-                
-                if lista_canales:
-                    canal_limpio = limpiar(canal_marca)
+                for c in lista_canales:
+                    if not isinstance(c, dict): continue
+                    t_json = limpiar(c.get("title", ""))
+                    tvg_json = limpiar(c.get("tvg_id", ""))
                     
-                    # 1. Búsqueda exacta o contenida en tu JSON
-                    for c in lista_canales:
-                        if not isinstance(c, dict): continue
-                        t_json = limpiar(c.get("title", ""))
-                        tvg_json = limpiar(c.get("tvg_id", ""))
-                        
-                        if canal_limpio in t_json or canal_limpio in tvg_json or t_json in canal_limpio:
-                            hash_acestream = c.get("hash", "")
-                            logo_canal = c.get("logo", "")
-                            # Si encuentra una versión en 1080p, prioriza esa
-                            if "1080" in c.get("title", ""):
-                                break
+                    if clave_busqueda and (clave_busqueda in t_json or clave_busqueda in tvg_json or t_json in clave_busqueda):
+                        hash_acestream = c.get("hash", "")
+                        logo_canal = c.get("logo", "")
+                        # Priorizamos el 1080p
+                        if "1080" in c.get("title", ""):
+                            break
 
-                evento_obj = {
-                    "dia": "Próximos Partidos",
-                    "deporte": deporte,
-                    "hora": hora,
-                    "competicion": "",
-                    "partido": partido,
-                    "canal": canal_marca,
-                    "hash": hash_acestream,
-                    "logo": logo_canal
-                }
-                
-                if evento_obj not in eventos:
-                    eventos.append(evento_obj)
+            evento_obj = {
+                "dia": dia_completo,
+                "deporte": deporte,
+                "hora": hora,
+                "competicion": competicion,
+                "partido": partido,
+                "canal": canal_marca,
+                "hash": hash_acestream,
+                "logo": logo_canal
+            }
+            
+            if evento_obj not in eventos:
+                eventos.append(evento_obj)
+
+        except Exception as e:
+            continue
 
     return eventos
 
@@ -147,20 +179,39 @@ async def telegram_webhook(request: Request):
             
             eventos = obtener_agenda_datos()
             if not eventos:
-                enviar_mensaje_telegram(chat_id, "❌ No se pudieron extraer eventos.")
+                enviar_mensaje_telegram(chat_id, "❌ No se pudieron extraer eventos en este momento.")
                 return {"status": "ok"}
 
             mensaje = "🏆 *AGENDA DEPORTIVA & ACESTREAM* 🏆\n\n"
-            for ev in eventos[:15]:
+            dia_actual = ""
+            
+            # Mostramos un máximo de 30 eventos para no saturar el bot
+            for ev in eventos[:30]:
+                if ev["dia"] != dia_actual:
+                    dia_actual = ev["dia"]
+                    mensaje += f"\n📅 *{dia_actual}*\n" + "—" * 15 + "\n"
+                
                 emoji = "⚽" if "fútbol" in ev["deporte"].lower() else "🎾" if "tenis" in ev["deporte"].lower() else "🏅"
                 mensaje += f"{emoji} *{ev['deporte']} - {ev['hora']}*\n"
+                
+                # ¡Aquí recuperamos la competición para que salga en Telegram!
+                if ev["competicion"]:
+                    mensaje += f"🏆 {ev['competicion']}\n"
+                    
                 mensaje += f"🆚 {ev['partido']}\n"
                 mensaje += f"📺 {ev['canal']}\n"
+                
                 if ev["hash"]:
                     mensaje += f"🔗 `acestream://{ev['hash']}`\n"
                 mensaje += "\n"
+                
+                # Si el mensaje es muy largo, lo cortamos y lo enviamos en varias partes
+                if len(mensaje) > 3500:
+                    enviar_mensaje_telegram(chat_id, mensaje)
+                    mensaje = ""
 
-            enviar_mensaje_telegram(chat_id, mensaje)
+            if mensaje.strip():
+                enviar_mensaje_telegram(chat_id, mensaje)
                 
     except Exception as e:
         print("Error webhook:", e)
