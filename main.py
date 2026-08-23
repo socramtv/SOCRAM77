@@ -98,7 +98,8 @@ def obtener_agenda_datos():
             if len(partido) < 3 or "resultados" in partido.lower():
                 continue
 
-            hash_acestream = ""
+            # Ahora guardaremos una lista de hashes en lugar de uno solo
+            lista_hashes_canal = []
             
             if lista_canales:
                 c_marca = limpiar_extremo(canal_marca)
@@ -122,12 +123,13 @@ def obtener_agenda_datos():
                         coincidencias.append(c)
                 
                 if coincidencias:
-                    mejor_opcion = coincidencias[0]
+                    # Recorremos todas las coincidencias y guardamos sus hashes sin repetir
+                    hashes_vistos = set()
                     for op in coincidencias:
-                        if "1080" in str(op.get("title", "")):
-                            mejor_opcion = op
-                            break
-                    hash_acestream = mejor_opcion.get("hash", "")
+                        h = op.get("hash", "")
+                        if h and h not in hashes_vistos:
+                            lista_hashes_canal.append(h)
+                            hashes_vistos.add(h)
 
             evento_obj = {
                 "dia": dia_completo,
@@ -136,7 +138,7 @@ def obtener_agenda_datos():
                 "competicion": competicion,
                 "partido": partido,
                 "canal": canal_marca,
-                "hash": hash_acestream
+                "hashes": lista_hashes_canal # Añadimos la lista completa
             }
             
             if evento_obj not in eventos:
@@ -149,7 +151,6 @@ def obtener_agenda_datos():
 
 def enviar_mensaje_telegram(chat_id, texto):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    # Volvemos a Markdown y usamos disable_web_page_preview para que no salgan previsualizaciones enormes
     requests.post(url, json={"chat_id": chat_id, "text": texto, "parse_mode": "Markdown", "disable_web_page_preview": True})
 
 @app.get("/", response_class=HTMLResponse)
@@ -213,10 +214,11 @@ async def telegram_webhook(request: Request):
                 mensaje += f"🆚 {ev['partido']}\n"
                 mensaje += f"📺 {ev['canal']}\n"
                 
-                # ¡Aplicamos el formato URL que has pedido!
-                if ev["hash"]:
-                    enlace_local = f"http://127.0.0.1:6878/ace/manifest.m3u8?id={ev['hash']}"
-                    mensaje += f"🔗 [Abrir en reproductor]({enlace_local})\n"
+                # Bucle para mostrar todas las opciones de enlaces disponibles
+                if ev.get("hashes"):
+                    for i, hash_str in enumerate(ev["hashes"]):
+                        enlace_local = f"http://127.0.0.1:6878/ace/manifest.m3u8?id={hash_str}"
+                        mensaje += f"🔗 [Opción {i+1} en reproductor]({enlace_local})\n"
                 
                 mensaje += "\n"
                 
