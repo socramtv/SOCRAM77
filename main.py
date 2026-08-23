@@ -19,46 +19,54 @@ app.add_middleware(
 
 TELEGRAM_TOKEN = "8899732413:AAE7wHYoHYhvePxlxuKCzndeVRdqkOTaCFo"
 
-# Diccionario ampliado con los canales de tu captura
+# El nuevo "cerebro" que traduce los nombres de Marca a tu lista exacta de GitHub
 MAPEO_CANALES = {
-    "m+ vamos": "vamos",
-    "m+ vamos 2": "vamos",
-    "m+ deportes": "deportes",
-    "movistar plus": "movistar plus",
-    "movistar+": "movistar plus",
-    "m+ liga de campeones": "ligadecampeones",
-    "m+ liga de campeones 2": "ligadecampeones2",
-    "m+ liga de campeones 3": "ligadecampeones3",
-    "m+ liga de campeones 4": "ligadecampeones4",
-    "dazn laliga": "daznlaliga",
-    "laliga tv hypermotion": "hypermotion",
-    "teledeporte": "teledeporte",
-    "teledeporte / la 2": "teledeporte",
-    "la 2": "la2",
-    "m+ golf 2": "golf",
-    "tv3": "tv3",
-    "dazn 1": "dazn1",
-    "dazn 2": "dazn2",
-    "dazn f1": "daznf1",
-    "gol": "gol"
+    "m+ vamos": ["vamos", "mvamos", "movistarvamos"],
+    "m+ vamos 2": ["vamos2", "mvamos2", "movistarvamos2"],
+    "m+ deportes": ["deportes", "mdeportes", "movistardeportes", "deportes1"],
+    "m+ deportes 2": ["deportes2", "mdeportes2", "movistardeportes2"],
+    "m+ deportes 3": ["deportes3", "mdeportes3", "movistardeportes3"],
+    "movistar plus": ["movistarplus", "mplus", "plus"],
+    "movistar+": ["movistarplus", "mplus", "plus"],
+    "m+ liga de campeones": ["ligadecampeones", "mligadecampeones", "movistarligadecampeones", "lcampeones", "mlcampeones"],
+    "m+ liga de campeones 2": ["ligadecampeones2", "mligadecampeones2", "movistarligadecampeones2", "lcampeones2", "mlcampeones2"],
+    "m+ liga de campeones 3": ["ligadecampeones3", "mligadecampeones3", "movistarligadecampeones3", "lcampeones3", "mlcampeones3"],
+    "m+ liga de campeones 4": ["ligadecampeones4", "mligadecampeones4", "movistarligadecampeones4", "lcampeones4", "mlcampeones4"],
+    "m+ golf 2": ["golf2", "mgolf2", "movistargolf2"],
+    "m+ golf": ["golf", "mgolf", "movistargolf"],
+    "dazn laliga": ["daznlaliga"],
+    "dazn laliga 2": ["daznlaliga2"],
+    "laliga tv hypermotion": ["hypermotion", "laligatvhypermotion", "laligahypermotion"],
+    "teledeporte": ["teledeporte", "tdp"],
+    "teledeporte / la 2": ["teledeporte", "tdp", "la2"],
+    "la 2": ["la2"],
+    "tv3": ["tv3"],
+    "dazn 1": ["dazn1"],
+    "dazn 2": ["dazn2"],
+    "dazn f1": ["daznf1"],
+    "gol": ["gol", "golplay", "goltv"]
 }
 
-def limpiar(texto):
+def limpiar_estricto(texto):
     if not texto: return ""
     n = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
-    for b in ["1080p", "720p", "1080", "720", "4k", "hd", "fhd", "uhd", "*"]:
+    # Limpieza absoluta de calidades y símbolos que rompen las coincidencias
+    for b in ["1080p", "720p", "1080", "720", "4k", "hd", "fhd", "uhd", "*", " ", "-"]:
         n = n.replace(b, "")
     return re.sub(r'[^a-z0-9]', '', n)
 
 def obtener_agenda_datos():
     lista_canales = []
+    estado_json = "⚠️ Error leyendo tu GitHub"
     try:
-        url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/refs/heads/main/hashes.json"
-        resp_json = requests.get(url_json, timeout=8)
+        # He ajustado la URL a la ruta principal por seguridad contra errores 404
+        url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/main/hashes.json"
+        resp_json = requests.get(url_json, timeout=10)
         if resp_json.status_code == 200:
             datos = resp_json.json()
             if isinstance(datos, list):
                 lista_canales = [c for c in datos if isinstance(c, dict)]
+                estado_json = "✅ Enlaces Acestream sincronizados"
     except Exception as e:
         print("Aviso JSON:", e)
 
@@ -69,15 +77,13 @@ def obtener_agenda_datos():
         response = requests.get(url_marca, headers=headers, timeout=12)
         response.raise_for_status()
     except Exception as e:
-        return []
+        return [], estado_json
 
     soup = BeautifulSoup(response.text, 'html.parser')
     eventos = []
     
-    # Vamos directos a cazar la clase exacta de los eventos
     for evento in soup.find_all('li', class_='dailyevent'):
         try:
-            # 1. Recuperamos el día mirando hacia atrás en el HTML
             nodo_titulo = evento.find_previous('span', class_='title-section-widget')
             if nodo_titulo:
                 dia_semana = nodo_titulo.find('strong').get_text(strip=True) if nodo_titulo.find('strong') else ""
@@ -86,7 +92,6 @@ def obtener_agenda_datos():
             else:
                 dia_completo = "Agenda Deportiva"
 
-            # 2. Recuperamos TODOS los datos, incluyendo la competición
             deporte_tag = evento.find(class_='dailyday')
             deporte = deporte_tag.get_text(strip=True) if deporte_tag else "Deporte"
 
@@ -102,29 +107,41 @@ def obtener_agenda_datos():
             canal_tag = evento.find(class_='dailychannel')
             canal_marca = canal_tag.get_text(strip=True) if canal_tag else "TV"
 
-            # Filtro antibasura
             if len(partido) < 3 or "resultados" in partido.lower():
                 continue
 
-            # 3. Cruce Inteligente con tus enlaces de GitHub
+            # --- CRUCE INFALIBLE CON GITHUB ---
             hash_acestream = ""
             logo_canal = ""
             
             if lista_canales:
                 canal_key = canal_marca.lower().strip()
-                clave_busqueda = MAPEO_CANALES.get(canal_key, limpiar(canal_marca))
+                # Consultamos el diccionario mágico
+                claves_busqueda = MAPEO_CANALES.get(canal_key, [limpiar_estricto(canal_marca)])
                 
+                coincidencias = []
                 for c in lista_canales:
                     if not isinstance(c, dict): continue
-                    t_json = limpiar(c.get("title", ""))
-                    tvg_json = limpiar(c.get("tvg_id", ""))
+                    t_json = limpiar_estricto(c.get("title", ""))
+                    tvg_json = limpiar_estricto(c.get("tvg_id", ""))
                     
-                    if clave_busqueda and (clave_busqueda in t_json or clave_busqueda in tvg_json or t_json in clave_busqueda):
-                        hash_acestream = c.get("hash", "")
-                        logo_canal = c.get("logo", "")
-                        # Priorizamos el 1080p
-                        if "1080" in c.get("title", ""):
+                    # Coincidencia exacta
+                    if t_json in claves_busqueda or tvg_json in claves_busqueda:
+                        coincidencias.append(c)
+                    else:
+                        # Coincidencia parcial de seguridad (solo para canales raros)
+                        for cb in claves_busqueda:
+                            if len(cb) > 4 and (cb in t_json or cb in tvg_json):
+                                coincidencias.append(c)
+                
+                if coincidencias:
+                    mejor_opcion = coincidencias[0]
+                    for op in coincidencias:
+                        if "1080" in str(op.get("title", "")):
+                            mejor_opcion = op
                             break
+                    hash_acestream = mejor_opcion.get("hash", "")
+                    logo_canal = mejor_opcion.get("logo", "")
 
             evento_obj = {
                 "dia": dia_completo,
@@ -143,7 +160,7 @@ def obtener_agenda_datos():
         except Exception as e:
             continue
 
-    return eventos
+    return eventos, estado_json
 
 def enviar_mensaje_telegram(chat_id, texto):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -158,13 +175,13 @@ def cargar_interfaz():
 
 @app.post("/extraer")
 def extraer_programacion():
-    eventos = obtener_agenda_datos()
-    return {"total": len(eventos), "eventos": eventos}
+    eventos, estado = obtener_agenda_datos()
+    return {"total": len(eventos), "estado_json": estado, "eventos": eventos}
 
 @app.get("/test-scraping")
 def test_scraping():
-    eventos = obtener_agenda_datos()
-    return {"total_procesados": len(eventos), "muestra": eventos[:3]}
+    eventos, estado = obtener_agenda_datos()
+    return {"total_procesados": len(eventos), "estado_json": estado, "muestra": eventos[:5]}
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
@@ -177,24 +194,22 @@ async def telegram_webhook(request: Request):
         if text.strip() == "/agenda" and chat_id:
             enviar_mensaje_telegram(chat_id, "🔍 Consultando la programación y cruzando tus enlaces de Acestream...")
             
-            eventos = obtener_agenda_datos()
+            eventos, estado_json = obtener_agenda_datos()
             if not eventos:
                 enviar_mensaje_telegram(chat_id, "❌ No se pudieron extraer eventos en este momento.")
                 return {"status": "ok"}
 
-            mensaje = "🏆 *AGENDA DEPORTIVA & ACESTREAM* 🏆\n\n"
+            mensaje = f"🏆 *AGENDA DEPORTIVA & ACESTREAM* 🏆\n_{estado_json}_\n\n"
             dia_actual = ""
             
-            # Mostramos un máximo de 30 eventos para no saturar el bot
             for ev in eventos[:30]:
                 if ev["dia"] != dia_actual:
                     dia_actual = ev["dia"]
                     mensaje += f"\n📅 *{dia_actual}*\n" + "—" * 15 + "\n"
                 
-                emoji = "⚽" if "fútbol" in ev["deporte"].lower() else "🎾" if "tenis" in ev["deporte"].lower() else "🏅"
+                emoji = "⚽" if "fútbol" in ev["deporte"].lower() else "🎾" if "tenis" in ev["deporte"].lower() else "🏎️" if "fórmula" in ev["deporte"].lower() else "🏅"
                 mensaje += f"{emoji} *{ev['deporte']} - {ev['hora']}*\n"
                 
-                # ¡Aquí recuperamos la competición para que salga en Telegram!
                 if ev["competicion"]:
                     mensaje += f"🏆 {ev['competicion']}\n"
                     
@@ -205,7 +220,6 @@ async def telegram_webhook(request: Request):
                     mensaje += f"🔗 `acestream://{ev['hash']}`\n"
                 mensaje += "\n"
                 
-                # Si el mensaje es muy largo, lo cortamos y lo enviamos en varias partes
                 if len(mensaje) > 3500:
                     enviar_mensaje_telegram(chat_id, mensaje)
                     mensaje = ""
