@@ -19,57 +19,55 @@ app.add_middleware(
 
 TELEGRAM_TOKEN = "8899732413:AAE7wHYoHYhvePxlxuKCzndeVRdqkOTaCFo"
 
-# El nuevo "cerebro" que traduce los nombres de Marca a tu lista exacta de GitHub
-MAPEO_CANALES = {
-    "m+ vamos": ["vamos", "mvamos", "movistarvamos"],
-    "m+ vamos 2": ["vamos2", "mvamos2", "movistarvamos2"],
-    "m+ deportes": ["deportes", "mdeportes", "movistardeportes", "deportes1"],
-    "m+ deportes 2": ["deportes2", "mdeportes2", "movistardeportes2"],
-    "m+ deportes 3": ["deportes3", "mdeportes3", "movistardeportes3"],
-    "movistar plus": ["movistarplus", "mplus", "plus"],
-    "movistar+": ["movistarplus", "mplus", "plus"],
-    "m+ liga de campeones": ["ligadecampeones", "mligadecampeones", "movistarligadecampeones", "lcampeones", "mlcampeones"],
-    "m+ liga de campeones 2": ["ligadecampeones2", "mligadecampeones2", "movistarligadecampeones2", "lcampeones2", "mlcampeones2"],
-    "m+ liga de campeones 3": ["ligadecampeones3", "mligadecampeones3", "movistarligadecampeones3", "lcampeones3", "mlcampeones3"],
-    "m+ liga de campeones 4": ["ligadecampeones4", "mligadecampeones4", "movistarligadecampeones4", "lcampeones4", "mlcampeones4"],
-    "m+ golf 2": ["golf2", "mgolf2", "movistargolf2"],
-    "m+ golf": ["golf", "mgolf", "movistargolf"],
-    "dazn laliga": ["daznlaliga"],
-    "dazn laliga 2": ["daznlaliga2"],
-    "laliga tv hypermotion": ["hypermotion", "laligatvhypermotion", "laligahypermotion"],
-    "teledeporte": ["teledeporte", "tdp"],
-    "teledeporte / la 2": ["teledeporte", "tdp", "la2"],
-    "la 2": ["la2"],
-    "tv3": ["tv3"],
-    "dazn 1": ["dazn1"],
-    "dazn 2": ["dazn2"],
-    "dazn f1": ["daznf1"],
-    "gol": ["gol", "golplay", "goltv"]
-}
-
-def limpiar_estricto(texto):
+def limpiar_extremo(texto):
     if not texto: return ""
-    n = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn').lower()
-    # Limpieza absoluta de calidades y símbolos que rompen las coincidencias
-    for b in ["1080p", "720p", "1080", "720", "4k", "hd", "fhd", "uhd", "*", " ", "-"]:
+    # Quitar tildes y pasar a minúscula
+    n = ''.join(c for c in unicodedata.normalize('NFD', str(texto)) if unicodedata.category(c) != 'Mn').lower()
+    
+    # Unificar la forma de llamar a Movistar
+    n = n.replace("movistar plus+", "mplus").replace("movistar+", "mplus")
+    n = n.replace("movistar ", "mplus").replace("movistar", "mplus")
+    n = n.replace("m+ ", "mplus").replace("m+", "mplus")
+    
+    # Destruir calidades y palabras que rompan la coincidencia
+    basura = ["1080p", "1080", "720p", "720", "4k", "hd", "fhd", "uhd", "tv", " ", "-", "*", "+", "/", "|", ".", ","]
+    for b in basura:
         n = n.replace(b, "")
+        
+    # Dejar exclusivamente letras y números
     return re.sub(r'[^a-z0-9]', '', n)
 
 def obtener_agenda_datos():
     lista_canales = []
-    estado_json = "⚠️ Error leyendo tu GitHub"
+    estado_json = "⚠️ Iniciando carga..."
+    
+    # 1. Leer el JSON a prueba de balas
     try:
-        # He ajustado la URL a la ruta principal por seguridad contra errores 404
-        url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/main/hashes.json"
-        resp_json = requests.get(url_json, timeout=10)
-        if resp_json.status_code == 200:
-            datos = resp_json.json()
+        url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/refs/heads/main/hashes.json"
+        resp = requests.get(url_json, timeout=10)
+        if resp.status_code == 200:
+            datos = resp.json()
+            # Si es una lista directa
             if isinstance(datos, list):
                 lista_canales = [c for c in datos if isinstance(c, dict)]
-                estado_json = "✅ Enlaces Acestream sincronizados"
+            # Si está envuelto en un diccionario (ej: {"canales": [...]})
+            elif isinstance(datos, dict):
+                for k, v in datos.items():
+                    if isinstance(v, list):
+                        lista_canales = [c for c in v if isinstance(c, dict)]
+                        break
+            
+            if not lista_canales:
+                estado_json = "⚠️ JSON cargado pero no se encontraron canales válidos"
+            else:
+                estado_json = f"✅ {len(lista_canales)} enlaces Acestream sincronizados"
+        else:
+            estado_json = f"⚠️ Error HTTP {resp.status_code} al bajar JSON de GitHub"
     except Exception as e:
-        print("Aviso JSON:", e)
+        estado_json = "⚠️ Error de conexión con tu JSON de GitHub"
+        print("Error JSON:", e)
 
+    # 2. Descargar la agenda de Marca
     url_marca = "https://www.marca.com/programacion-tv.html"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
@@ -84,6 +82,7 @@ def obtener_agenda_datos():
     
     for evento in soup.find_all('li', class_='dailyevent'):
         try:
+            # Recuperar día
             nodo_titulo = evento.find_previous('span', class_='title-section-widget')
             if nodo_titulo:
                 dia_semana = nodo_titulo.find('strong').get_text(strip=True) if nodo_titulo.find('strong') else ""
@@ -92,6 +91,7 @@ def obtener_agenda_datos():
             else:
                 dia_completo = "Agenda Deportiva"
 
+            # Recuperar datos
             deporte_tag = evento.find(class_='dailyday')
             deporte = deporte_tag.get_text(strip=True) if deporte_tag else "Deporte"
 
@@ -110,36 +110,42 @@ def obtener_agenda_datos():
             if len(partido) < 3 or "resultados" in partido.lower():
                 continue
 
-            # --- CRUCE INFALIBLE CON GITHUB ---
+            # 3. Cruce perfecto con el "Limpiador Extremo"
             hash_acestream = ""
             logo_canal = ""
             
             if lista_canales:
-                canal_key = canal_marca.lower().strip()
-                # Consultamos el diccionario mágico
-                claves_busqueda = MAPEO_CANALES.get(canal_key, [limpiar_estricto(canal_marca)])
-                
+                c_marca = limpiar_extremo(canal_marca)
                 coincidencias = []
+                
                 for c in lista_canales:
                     if not isinstance(c, dict): continue
-                    t_json = limpiar_estricto(c.get("title", ""))
-                    tvg_json = limpiar_estricto(c.get("tvg_id", ""))
+                    
+                    c_json = limpiar_extremo(c.get("title", ""))
+                    tvg_json = limpiar_extremo(c.get("tvg_id", ""))
+                    
+                    es_match = False
                     
                     # Coincidencia exacta
-                    if t_json in claves_busqueda or tvg_json in claves_busqueda:
+                    if c_marca == c_json or c_marca == tvg_json:
+                        es_match = True
+                    # Coincidencia contenida (si tienen tamaño suficiente para no dar falsos positivos)
+                    elif len(c_marca) >= 3 and len(c_json) >= 3 and (c_json in c_marca or c_marca in c_json):
+                        es_match = True
+                    elif len(c_marca) >= 3 and len(tvg_json) >= 3 and (tvg_json in c_marca or c_marca in tvg_json):
+                        es_match = True
+                        
+                    if es_match:
                         coincidencias.append(c)
-                    else:
-                        # Coincidencia parcial de seguridad (solo para canales raros)
-                        for cb in claves_busqueda:
-                            if len(cb) > 4 and (cb in t_json or cb in tvg_json):
-                                coincidencias.append(c)
                 
                 if coincidencias:
                     mejor_opcion = coincidencias[0]
+                    # Si hay varias opciones, siempre prioriza la de 1080p
                     for op in coincidencias:
                         if "1080" in str(op.get("title", "")):
                             mejor_opcion = op
                             break
+                    
                     hash_acestream = mejor_opcion.get("hash", "")
                     logo_canal = mejor_opcion.get("logo", "")
 
@@ -192,11 +198,11 @@ async def telegram_webhook(request: Request):
         text = message.get("text", "")
         
         if text.strip() == "/agenda" and chat_id:
-            enviar_mensaje_telegram(chat_id, "🔍 Consultando la programación y cruzando tus enlaces de Acestream...")
+            enviar_mensaje_telegram(chat_id, "🔍 Consultando la programación y sincronizando tus enlaces de Acestream...")
             
             eventos, estado_json = obtener_agenda_datos()
             if not eventos:
-                enviar_mensaje_telegram(chat_id, "❌ No se pudieron extraer eventos en este momento.")
+                enviar_mensaje_telegram(chat_id, f"❌ No se pudieron extraer eventos.\nInfo: {estado_json}")
                 return {"status": "ok"}
 
             mensaje = f"🏆 *AGENDA DEPORTIVA & ACESTREAM* 🏆\n_{estado_json}_\n\n"
@@ -207,7 +213,19 @@ async def telegram_webhook(request: Request):
                     dia_actual = ev["dia"]
                     mensaje += f"\n📅 *{dia_actual}*\n" + "—" * 15 + "\n"
                 
-                emoji = "⚽" if "fútbol" in ev["deporte"].lower() else "🎾" if "tenis" in ev["deporte"].lower() else "🏎️" if "fórmula" in ev["deporte"].lower() else "🏅"
+                # Sistema de Emojis automático
+                d_low = ev["deporte"].lower()
+                if "fútbol" in d_low: emoji = "⚽"
+                elif "tenis" in d_low: emoji = "🎾"
+                elif "fórmula" in d_low or "motor" in d_low or "motogp" in d_low: emoji = "🏎️"
+                elif "baloncesto" in d_low or "basket" in d_low: emoji = "🏀"
+                elif "balonmano" in d_low: emoji = "🤾"
+                elif "voleibol" in d_low or "voley" in d_low: emoji = "🏐"
+                elif "ciclismo" in d_low: emoji = "🚴"
+                elif "vela" in d_low: emoji = "⛵"
+                elif "golf" in d_low: emoji = "⛳"
+                else: emoji = "🏅"
+
                 mensaje += f"{emoji} *{ev['deporte']} - {ev['hora']}*\n"
                 
                 if ev["competicion"]:
