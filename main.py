@@ -21,36 +21,27 @@ TELEGRAM_TOKEN = "8899732413:AAE7wHYoHYhvePxlxuKCzndeVRdqkOTaCFo"
 
 def limpiar_extremo(texto):
     if not texto: return ""
-    # Quitar tildes y pasar a minúscula
     n = ''.join(c for c in unicodedata.normalize('NFD', str(texto)) if unicodedata.category(c) != 'Mn').lower()
-    
-    # Unificar la forma de llamar a Movistar
     n = n.replace("movistar plus+", "mplus").replace("movistar+", "mplus")
     n = n.replace("movistar ", "mplus").replace("movistar", "mplus")
     n = n.replace("m+ ", "mplus").replace("m+", "mplus")
     
-    # Destruir calidades y palabras que rompan la coincidencia
     basura = ["1080p", "1080", "720p", "720", "4k", "hd", "fhd", "uhd", "tv", " ", "-", "*", "+", "/", "|", ".", ","]
     for b in basura:
         n = n.replace(b, "")
-        
-    # Dejar exclusivamente letras y números
     return re.sub(r'[^a-z0-9]', '', n)
 
 def obtener_agenda_datos():
     lista_canales = []
     estado_json = "⚠️ Iniciando carga..."
     
-    # 1. Leer el JSON a prueba de balas
     try:
         url_json = "https://raw.githubusercontent.com/socramtv/SOCRAM77/refs/heads/main/hashes.json"
         resp = requests.get(url_json, timeout=10)
         if resp.status_code == 200:
             datos = resp.json()
-            # Si es una lista directa
             if isinstance(datos, list):
                 lista_canales = [c for c in datos if isinstance(c, dict)]
-            # Si está envuelto en un diccionario (ej: {"canales": [...]})
             elif isinstance(datos, dict):
                 for k, v in datos.items():
                     if isinstance(v, list):
@@ -67,7 +58,6 @@ def obtener_agenda_datos():
         estado_json = "⚠️ Error de conexión con tu JSON de GitHub"
         print("Error JSON:", e)
 
-    # 2. Descargar la agenda de Marca
     url_marca = "https://www.marca.com/programacion-tv.html"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
@@ -82,7 +72,6 @@ def obtener_agenda_datos():
     
     for evento in soup.find_all('li', class_='dailyevent'):
         try:
-            # Recuperar día
             nodo_titulo = evento.find_previous('span', class_='title-section-widget')
             if nodo_titulo:
                 dia_semana = nodo_titulo.find('strong').get_text(strip=True) if nodo_titulo.find('strong') else ""
@@ -91,7 +80,6 @@ def obtener_agenda_datos():
             else:
                 dia_completo = "Agenda Deportiva"
 
-            # Recuperar datos
             deporte_tag = evento.find(class_='dailyday')
             deporte = deporte_tag.get_text(strip=True) if deporte_tag else "Deporte"
 
@@ -110,7 +98,6 @@ def obtener_agenda_datos():
             if len(partido) < 3 or "resultados" in partido.lower():
                 continue
 
-            # 3. Cruce perfecto con el "Limpiador Extremo"
             hash_acestream = ""
             logo_canal = ""
             
@@ -125,11 +112,8 @@ def obtener_agenda_datos():
                     tvg_json = limpiar_extremo(c.get("tvg_id", ""))
                     
                     es_match = False
-                    
-                    # Coincidencia exacta
                     if c_marca == c_json or c_marca == tvg_json:
                         es_match = True
-                    # Coincidencia contenida (si tienen tamaño suficiente para no dar falsos positivos)
                     elif len(c_marca) >= 3 and len(c_json) >= 3 and (c_json in c_marca or c_marca in c_json):
                         es_match = True
                     elif len(c_marca) >= 3 and len(tvg_json) >= 3 and (tvg_json in c_marca or c_marca in tvg_json):
@@ -140,12 +124,10 @@ def obtener_agenda_datos():
                 
                 if coincidencias:
                     mejor_opcion = coincidencias[0]
-                    # Si hay varias opciones, siempre prioriza la de 1080p
                     for op in coincidencias:
                         if "1080" in str(op.get("title", "")):
                             mejor_opcion = op
                             break
-                    
                     hash_acestream = mejor_opcion.get("hash", "")
                     logo_canal = mejor_opcion.get("logo", "")
 
@@ -170,7 +152,8 @@ def obtener_agenda_datos():
 
 def enviar_mensaje_telegram(chat_id, texto):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": texto, "parse_mode": "Markdown"})
+    # Cambiamos a HTML para poder incrustar bien los enlaces acestream
+    requests.post(url, json={"chat_id": chat_id, "text": texto, "parse_mode": "HTML", "disable_web_page_preview": True})
 
 @app.get("/", response_class=HTMLResponse)
 def cargar_interfaz():
@@ -205,15 +188,15 @@ async def telegram_webhook(request: Request):
                 enviar_mensaje_telegram(chat_id, f"❌ No se pudieron extraer eventos.\nInfo: {estado_json}")
                 return {"status": "ok"}
 
-            mensaje = f"🏆 *AGENDA DEPORTIVA & ACESTREAM* 🏆\n_{estado_json}_\n\n"
+            # Construimos el mensaje en HTML
+            mensaje = f"🏆 <b>AGENDA DEPORTIVA & ACESTREAM</b> 🏆\n<i>{estado_json}</i>\n\n"
             dia_actual = ""
             
             for ev in eventos[:30]:
                 if ev["dia"] != dia_actual:
                     dia_actual = ev["dia"]
-                    mensaje += f"\n📅 *{dia_actual}*\n" + "—" * 15 + "\n"
+                    mensaje += f"\n📅 <b>{dia_actual}</b>\n" + "—" * 15 + "\n"
                 
-                # Sistema de Emojis automático
                 d_low = ev["deporte"].lower()
                 if "fútbol" in d_low: emoji = "⚽"
                 elif "tenis" in d_low: emoji = "🎾"
@@ -226,16 +209,19 @@ async def telegram_webhook(request: Request):
                 elif "golf" in d_low: emoji = "⛳"
                 else: emoji = "🏅"
 
-                mensaje += f"{emoji} *{ev['deporte']} - {ev['hora']}*\n"
+                mensaje += f"{emoji} <b>{ev['deporte']} - {ev['hora']}</b>\n"
                 
                 if ev["competicion"]:
                     mensaje += f"🏆 {ev['competicion']}\n"
                     
                 mensaje += f"🆚 {ev['partido']}\n"
-                mensaje += f"📺 {ev['canal']}\n"
                 
+                # ¡Aquí está la magia! Si hay hash, crea el enlace clicable en el nombre del canal
                 if ev["hash"]:
-                    mensaje += f"🔗 `acestream://{ev['hash']}`\n"
+                    mensaje += f"📺 <a href='acestream://{ev['hash']}'>{ev['canal']}</a>\n"
+                else:
+                    mensaje += f"📺 {ev['canal']}\n"
+                
                 mensaje += "\n"
                 
                 if len(mensaje) > 3500:
