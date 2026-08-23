@@ -49,13 +49,13 @@ def obtener_agenda_datos():
                         break
             
             if not lista_canales:
-                estado_json = "⚠️ JSON cargado pero no se encontraron canales válidos"
+                estado_json = "⚠️ JSON cargado pero sin canales"
             else:
                 estado_json = f"✅ {len(lista_canales)} enlaces Acestream sincronizados"
         else:
-            estado_json = f"⚠️ Error HTTP {resp.status_code} al bajar JSON de GitHub"
+            estado_json = f"⚠️ Error HTTP {resp.status_code} al bajar JSON"
     except Exception as e:
-        estado_json = "⚠️ Error de conexión con tu JSON de GitHub"
+        estado_json = "⚠️ Error de conexión con JSON"
         print("Error JSON:", e)
 
     url_marca = "https://www.marca.com/programacion-tv.html"
@@ -99,7 +99,6 @@ def obtener_agenda_datos():
                 continue
 
             hash_acestream = ""
-            logo_canal = ""
             
             if lista_canales:
                 c_marca = limpiar_extremo(canal_marca)
@@ -129,7 +128,6 @@ def obtener_agenda_datos():
                             mejor_opcion = op
                             break
                     hash_acestream = mejor_opcion.get("hash", "")
-                    logo_canal = mejor_opcion.get("logo", "")
 
             evento_obj = {
                 "dia": dia_completo,
@@ -138,8 +136,7 @@ def obtener_agenda_datos():
                 "competicion": competicion,
                 "partido": partido,
                 "canal": canal_marca,
-                "hash": hash_acestream,
-                "logo": logo_canal
+                "hash": hash_acestream
             }
             
             if evento_obj not in eventos:
@@ -152,8 +149,8 @@ def obtener_agenda_datos():
 
 def enviar_mensaje_telegram(chat_id, texto):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    # Cambiamos a HTML para poder incrustar bien los enlaces acestream
-    requests.post(url, json={"chat_id": chat_id, "text": texto, "parse_mode": "HTML", "disable_web_page_preview": True})
+    # Volvemos a Markdown y usamos disable_web_page_preview para que no salgan previsualizaciones enormes
+    requests.post(url, json={"chat_id": chat_id, "text": texto, "parse_mode": "Markdown", "disable_web_page_preview": True})
 
 @app.get("/", response_class=HTMLResponse)
 def cargar_interfaz():
@@ -188,14 +185,13 @@ async def telegram_webhook(request: Request):
                 enviar_mensaje_telegram(chat_id, f"❌ No se pudieron extraer eventos.\nInfo: {estado_json}")
                 return {"status": "ok"}
 
-            # Construimos el mensaje en HTML
-            mensaje = f"🏆 <b>AGENDA DEPORTIVA & ACESTREAM</b> 🏆\n<i>{estado_json}</i>\n\n"
+            mensaje = f"🏆 *AGENDA DEPORTIVA & ACESTREAM* 🏆\n_{estado_json}_\n\n"
             dia_actual = ""
             
             for ev in eventos[:30]:
                 if ev["dia"] != dia_actual:
                     dia_actual = ev["dia"]
-                    mensaje += f"\n📅 <b>{dia_actual}</b>\n" + "—" * 15 + "\n"
+                    mensaje += f"\n📅 *{dia_actual}*\n" + "—" * 15 + "\n"
                 
                 d_low = ev["deporte"].lower()
                 if "fútbol" in d_low: emoji = "⚽"
@@ -209,18 +205,18 @@ async def telegram_webhook(request: Request):
                 elif "golf" in d_low: emoji = "⛳"
                 else: emoji = "🏅"
 
-                mensaje += f"{emoji} <b>{ev['deporte']} - {ev['hora']}</b>\n"
+                mensaje += f"{emoji} *{ev['deporte']} - {ev['hora']}*\n"
                 
                 if ev["competicion"]:
                     mensaje += f"🏆 {ev['competicion']}\n"
                     
                 mensaje += f"🆚 {ev['partido']}\n"
+                mensaje += f"📺 {ev['canal']}\n"
                 
-                # ¡Aquí está la magia! Si hay hash, crea el enlace clicable en el nombre del canal
+                # ¡Aplicamos el formato URL que has pedido!
                 if ev["hash"]:
-                    mensaje += f"📺 <a href='acestream://{ev['hash']}'>{ev['canal']}</a>\n"
-                else:
-                    mensaje += f"📺 {ev['canal']}\n"
+                    enlace_local = f"http://127.0.0.1:6878/ace/manifest.m3u8?id={ev['hash']}"
+                    mensaje += f"🔗 [Abrir en reproductor]({enlace_local})\n"
                 
                 mensaje += "\n"
                 
