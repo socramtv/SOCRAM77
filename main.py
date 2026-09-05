@@ -17,7 +17,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-TELEGRAM_TOKEN = "8899732413:AAE7wHYoHYhvePxlxuKCzndeVRdqkOTaCFo"
+# El token ahora se lee de forma segura desde las variables de Render
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 
 def limpiar_extremo(texto):
     if not texto: return ""
@@ -98,7 +99,6 @@ def obtener_agenda_datos():
             if len(partido) < 3 or "resultados" in partido.lower():
                 continue
 
-            # Ahora guardaremos una lista de hashes en lugar de uno solo
             lista_hashes_canal = []
             
             if lista_canales:
@@ -123,7 +123,6 @@ def obtener_agenda_datos():
                         coincidencias.append(c)
                 
                 if coincidencias:
-                    # Recorremos todas las coincidencias y guardamos sus hashes sin repetir
                     hashes_vistos = set()
                     for op in coincidencias:
                         h = op.get("hash", "")
@@ -138,7 +137,7 @@ def obtener_agenda_datos():
                 "competicion": competicion,
                 "partido": partido,
                 "canal": canal_marca,
-                "hashes": lista_hashes_canal # Añadimos la lista completa
+                "hashes": lista_hashes_canal
             }
             
             if evento_obj not in eventos:
@@ -150,6 +149,7 @@ def obtener_agenda_datos():
     return eventos, estado_json
 
 def enviar_mensaje_telegram(chat_id, texto):
+    if not TELEGRAM_TOKEN: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     requests.post(url, json={"chat_id": chat_id, "text": texto, "parse_mode": "Markdown", "disable_web_page_preview": True})
 
@@ -164,11 +164,6 @@ def cargar_interfaz():
 def extraer_programacion():
     eventos, estado = obtener_agenda_datos()
     return {"total": len(eventos), "estado_json": estado, "eventos": eventos}
-
-@app.get("/test-scraping")
-def test_scraping():
-    eventos, estado = obtener_agenda_datos()
-    return {"total_procesados": len(eventos), "estado_json": estado, "muestra": eventos[:5]}
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
@@ -214,7 +209,6 @@ async def telegram_webhook(request: Request):
                 mensaje += f"🆚 {ev['partido']}\n"
                 mensaje += f"📺 {ev['canal']}\n"
                 
-                # Bucle para mostrar todas las opciones de enlaces disponibles
                 if ev.get("hashes"):
                     for i, hash_str in enumerate(ev["hashes"]):
                         enlace_local = f"http://127.0.0.1:6878/ace/manifest.m3u8?id={hash_str}"
