@@ -45,6 +45,53 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
+        /* Contenedor de Buscador y Filtros */
+        #panel-filtros {
+            margin-bottom: 20px;
+        }
+
+        #buscador-eventos {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+            font-size: 1em;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .botones-deportes {
+            display: flex;
+            overflow-x: auto;
+            gap: 8px;
+            padding-bottom: 5px;
+            scrollbar-width: none;
+        }
+
+        .botones-deportes::-webkit-scrollbar {
+            display: none;
+        }
+
+        .btn-filtro {
+            padding: 8px 14px;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+            background: #ffffff;
+            color: #333;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9em;
+            white-space: nowrap;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .btn-filtro.activo {
+            background: #ff0000;
+            color: white;
+            border-color: #ff0000;
+        }
+
         .day-separator {
             background-color: #ff0000;
             color: white;
@@ -68,7 +115,6 @@
             border-left: 5px solid #2c2c2c;
         }
         
-        /* Resalta las tarjetas que tienen enlace listo */
         .card-con-enlace { border-left: 5px solid #28a745; }
 
         .row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
@@ -76,7 +122,6 @@
         
         .logo-canal { height: 20px; vertical-align: middle; margin-right: 5px; border-radius: 3px; }
         
-        /* Botones de Acestream */
         .botones-stream {
             display: flex;
             gap: 10px;
@@ -86,7 +131,7 @@
         }
         .btn-play {
             flex: 2;
-            background-color: #ff6600; /* Color Acestream */
+            background-color: #ff6600;
             color: white;
             text-decoration: none;
             padding: 10px;
@@ -112,11 +157,27 @@
 
     <div class="container">
         <button class="btn-cargar" onclick="extraer()">Cargar Agenda y Enlaces</button>
+        
+        <!-- BUSCADOR Y BOTONES DE FILTRO -->
+        <div id="panel-filtros">
+            <input type="text" id="buscador-eventos" placeholder="🔍 Buscar equipo, competición, canal..." onkeyup="filtrarEventos()">
+            <div class="botones-deportes">
+                <button class="btn-filtro activo" onclick="filtrarPorDeporte('Todos', this)">Todos</button>
+                <button class="btn-filtro" onclick="filtrarPorDeporte('Fútbol', this)">⚽ Fútbol</button>
+                <button class="btn-filtro" onclick="filtrarPorDeporte('Tenis', this)">🎾 Tenis</button>
+                <button class="btn-filtro" onclick="filtrarPorDeporte('Baloncesto', this)">🏀 Baloncesto</button>
+                <button class="btn-filtro" onclick="filtrarPorDeporte('Motor', this)">🏎️ Motor</button>
+                <button class="btn-filtro" onclick="filtrarPorDeporte('Ciclismo', this)">🚴 Ciclismo</button>
+            </div>
+        </div>
+
         <div id="loader" class="loader">Cruzando datos con GitHub, por favor espera...</div>
         <div id="resultados"></div>
     </div>
 
     <script>
+        let deporteActual = 'Todos';
+
         function obtenerEmojiDeporte(deporte) {
             const dep = deporte.toLowerCase();
             if(dep.includes('fútbol') || dep.includes('futbol')) return '⚽';
@@ -170,7 +231,7 @@
                             const claseBorde = evento.hash ? "result-card card-con-enlace" : "result-card";
                             
                             htmlContenido += `
-                                <div class="${claseBorde}">
+                                <div class="${claseBorde}" data-deporte="${evento.deporte.toLowerCase()}">
                                     <div class="row">
                                         <span class="emoji">${emojiDeporte}</span> 
                                         <span><strong>${evento.deporte}</strong> - ${evento.hora}</span>
@@ -200,7 +261,6 @@
                                     </div>
                             `;
 
-                            // Si encontró un hash en tu JSON, dibuja los botones
                             if (evento.hash) {
                                 htmlContenido += `
                                     <div class="botones-stream">
@@ -215,6 +275,7 @@
                     }
 
                     contenedorResultados.innerHTML = htmlContenido;
+                    filtrarEventos(); // Aplica el filtro actual si el usuario ya había escrito algo
 
                 } else {
                     alert("Error del servidor: " + datos.detail);
@@ -223,6 +284,61 @@
                 loader.style.display = "none";
                 alert("Fallo de conexión. Asegúrate de tener conexión a internet.");
             }
+        }
+
+        function filtrarPorDeporte(deporte, elementoBoton) {
+            deporteActual = deporte;
+
+            // Cambiar estilo visual del botón activo
+            document.querySelectorAll('.btn-filtro').forEach(btn => btn.classList.remove('activo'));
+            elementoBoton.classList.add('activo');
+
+            filtrarEventos();
+        }
+
+        function filtrarEventos() {
+            const textoBusqueda = document.getElementById('buscador-eventos').value.toLowerCase();
+            const tarjetas = document.querySelectorAll('.result-card');
+            const separadoresDia = document.querySelectorAll('.day-separator');
+
+            // Filtrar cada tarjeta de partido individualmente
+            tarjetas.forEach(tarjeta => {
+                const textoTarjeta = tarjeta.innerText.toLowerCase();
+                const deporteTarjeta = tarjeta.getAttribute('data-deporte') || '';
+
+                const coincideTexto = textoTarjeta.includes(textoBusqueda);
+                
+                let coincideDeporte = false;
+                if (deporteActual === 'Todos') {
+                    coincideDeporte = true;
+                } else if (deporteActual === 'Motor' && (deporteTarjeta.includes('motor') || deporteTarjeta.includes('f1') || deporteTarjeta.includes('motogp'))) {
+                    coincideDeporte = true;
+                } else {
+                    coincideDeporte = deporteTarjeta.includes(deporteActual.toLowerCase());
+                }
+
+                if (coincideTexto && coincideDeporte) {
+                    tarjeta.style.display = "block";
+                } else {
+                    tarjeta.style.display = "none";
+                }
+            });
+
+            // Ocultar los títulos de los días si todos los partidos de ese día están ocultos
+            separadoresDia.forEach(sep => {
+                let siguienteElemento = sep.nextElementSibling;
+                let hayVisiblesEnDia = false;
+
+                while (siguienteElemento && !siguienteElemento.classList.contains('day-separator')) {
+                    if (siguienteElemento.classList.contains('result-card') && siguienteElemento.style.display !== 'none') {
+                        hayVisiblesEnDia = true;
+                        break;
+                    }
+                    siguienteElemento = siguienteElemento.nextElementSibling;
+                }
+
+                sep.style.display = hayVisiblesEnDia ? "block" : "none";
+            });
         }
     </script>
 </body>
