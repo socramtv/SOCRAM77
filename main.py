@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import requests
@@ -17,7 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# El token ahora se lee de forma segura desde las variables de Render
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 
 def limpiar_extremo(texto):
@@ -137,6 +136,7 @@ def obtener_agenda_datos():
                 "competicion": competicion,
                 "partido": partido,
                 "canal": canal_marca,
+                "hash": lista_hashes_canal[0] if lista_hashes_canal else "", 
                 "hashes": lista_hashes_canal
             }
             
