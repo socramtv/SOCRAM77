@@ -45,7 +45,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        /* Contenedor de Buscador y Filtros */
         #panel-filtros {
             margin-bottom: 20px;
         }
@@ -55,34 +54,32 @@
             padding: 12px;
             border-radius: 8px;
             border: 1px solid #ccc;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             font-size: 1em;
             box-sizing: border-box;
             outline: none;
         }
 
+        /* Botones en dos filas automáticas */
         .botones-deportes {
             display: flex;
-            overflow-x: auto;
+            flex-wrap: wrap;
+            justify-content: center;
             gap: 8px;
             padding-bottom: 5px;
-            scrollbar-width: none;
-        }
-
-        .botones-deportes::-webkit-scrollbar {
-            display: none;
         }
 
         .btn-filtro {
-            padding: 8px 14px;
-            border-radius: 20px;
+            flex: 1 1 25%;
+            padding: 10px 12px;
+            border-radius: 8px;
             border: 1px solid #ddd;
             background: #ffffff;
             color: #333;
             cursor: pointer;
             font-weight: bold;
             font-size: 0.9em;
-            white-space: nowrap;
+            text-align: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
@@ -122,35 +119,29 @@
         
         .logo-canal { height: 20px; vertical-align: middle; margin-right: 5px; border-radius: 3px; }
         
+        /* Botones de visualización rediseñados */
         .botones-stream {
             display: flex;
-            gap: 10px;
+            flex-wrap: wrap;
+            gap: 8px;
             margin-top: 15px;
             padding-top: 10px;
             border-top: 1px solid #eee;
         }
-        .btn-play {
-            flex: 2;
-            background-color: #ff6600;
+        .btn-play, .btn-wvc, .btn-tab {
+            flex: 1 1 auto;
             color: white;
             text-decoration: none;
             padding: 10px;
             border-radius: 6px;
             text-align: center;
             font-weight: bold;
-            font-size: 0.95em;
+            font-size: 0.9em;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
         }
-        .btn-copy {
-            flex: 1;
-            background-color: #444;
-            color: white;
-            border: none;
-            padding: 10px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 0.95em;
-        }
+        .btn-play { background-color: #ff6600; }
+        .btn-wvc { background-color: #f39c12; }
+        .btn-tab { background-color: #34495e; }
     </style>
 </head>
 <body>
@@ -158,7 +149,6 @@
     <div class="container">
         <button class="btn-cargar" onclick="extraer()">Cargar Agenda y Enlaces</button>
         
-        <!-- BUSCADOR Y BOTONES DE FILTRO -->
         <div id="panel-filtros">
             <input type="text" id="buscador-eventos" placeholder="🔍 Buscar equipo, competición, canal..." onkeyup="filtrarEventos()">
             <div class="botones-deportes">
@@ -261,11 +251,15 @@
                                     </div>
                             `;
 
+                            // Tres botones listos para Android y Pestañas Nuevas
                             if (evento.hash) {
+                                const urlLocal = `127.0.0.1:6878/ace/manifest.m3u8?id=${evento.hash}`;
+                                
                                 htmlContenido += `
                                     <div class="botones-stream">
-                                        <a href="acestream://${evento.hash}" class="btn-play">▶ Ver en Acestream</a>
-                                        <button class="btn-copy" onclick="navigator.clipboard.writeText('${evento.hash}'); alert('Hash copiado!');">Copiar Hash</button>
+                                        <a href="acestream://${evento.hash}" class="btn-play">▶ Acestream</a>
+                                        <a href="intent://${urlLocal}#Intent;package=com.instantbits.cast.webvideo;scheme=http;type=video/*;end" class="btn-wvc">📺 Cast Web Video</a>
+                                        <a href="http://${urlLocal}" target="_blank" class="btn-tab">🔗 Pestaña Nueva</a>
                                     </div>
                                 `;
                             }
@@ -275,7 +269,7 @@
                     }
 
                     contenedorResultados.innerHTML = htmlContenido;
-                    filtrarEventos(); // Aplica el filtro actual si el usuario ya había escrito algo
+                    filtrarEventos();
 
                 } else {
                     alert("Error del servidor: " + datos.detail);
@@ -289,7 +283,6 @@
         function filtrarPorDeporte(deporte, elementoBoton) {
             deporteActual = deporte;
 
-            // Cambiar estilo visual del botón activo
             document.querySelectorAll('.btn-filtro').forEach(btn => btn.classList.remove('activo'));
             elementoBoton.classList.add('activo');
 
@@ -301,7 +294,6 @@
             const tarjetas = document.querySelectorAll('.result-card');
             const separadoresDia = document.querySelectorAll('.day-separator');
 
-            // Filtrar cada tarjeta de partido individualmente
             tarjetas.forEach(tarjeta => {
                 const textoTarjeta = tarjeta.innerText.toLowerCase();
                 const deporteTarjeta = tarjeta.getAttribute('data-deporte') || '';
@@ -324,7 +316,6 @@
                 }
             });
 
-            // Ocultar los títulos de los días si todos los partidos de ese día están ocultos
             separadoresDia.forEach(sep => {
                 let siguienteElemento = sep.nextElementSibling;
                 let hayVisiblesEnDia = false;
