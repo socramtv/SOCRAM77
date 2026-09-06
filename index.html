@@ -60,7 +60,6 @@
             outline: none;
         }
 
-        /* Botones en dos filas automáticas */
         .botones-deportes {
             display: flex;
             flex-wrap: wrap;
@@ -116,15 +115,28 @@
 
         .row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
         .emoji { font-size: 1.2em; min-width: 25px; text-align: center; }
-        
         .logo-canal { height: 20px; vertical-align: middle; margin-right: 5px; border-radius: 3px; }
         
-        /* Botones de visualización rediseñados */
+        /* Diseño del desplegable de opciones */
+        .selector-hash {
+            width: 100%;
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 6px;
+            border: 1px solid #bbb;
+            background-color: #f9f9f9;
+            font-weight: bold;
+            font-size: 0.95em;
+            color: #333;
+            outline: none;
+            cursor: pointer;
+        }
+        
         .botones-stream {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
-            margin-top: 15px;
+            margin-top: 10px;
             padding-top: 10px;
             border-top: 1px solid #eee;
         }
@@ -179,6 +191,15 @@
             return '🏅'; 
         }
 
+        // Motor para cambiar los enlaces en vivo según lo que elijas en el desplegable
+        function cambiarHash(nuevoHash, idPlay, idWvc, idTab) {
+            const urlLocal = `127.0.0.1:6878/ace/manifest.m3u8?id=${nuevoHash}`;
+            
+            document.getElementById(idPlay).href = `acestream://${nuevoHash}`;
+            document.getElementById(idWvc).href = `intent://${urlLocal}#Intent;package=com.instantbits.cast.webvideo;scheme=http;type=video/*;end`;
+            document.getElementById(idTab).href = `http://${urlLocal}`;
+        }
+
         async function extraer() {
             const loader = document.getElementById('loader');
             const contenedorResultados = document.getElementById('resultados');
@@ -203,7 +224,7 @@
                     datos.eventos.forEach(ev => {
                         if (!eventosPorDia[ev.dia]) eventosPorDia[ev.dia] = [];
                         eventosPorDia[ev.dia].push(ev);
-                        if (ev.hash) totalConEnlace++;
+                        if (ev.hashes && ev.hashes.length > 0) totalConEnlace++;
                     });
 
                     let htmlContenido = `
@@ -213,12 +234,16 @@
                         </div>
                     `;
                     
+                    let idContador = 0; // ID único para los botones de cada partido
+
                     for (const [dia, eventos] of Object.entries(eventosPorDia)) {
                         htmlContenido += `<div class="day-separator">📅 ${dia}</div>`;
                         
                         eventos.forEach(evento => {
+                            idContador++;
                             const emojiDeporte = obtenerEmojiDeporte(evento.deporte);
-                            const claseBorde = evento.hash ? "result-card card-con-enlace" : "result-card";
+                            const tieneEnlaces = evento.hashes && evento.hashes.length > 0;
+                            const claseBorde = tieneEnlaces ? "result-card card-con-enlace" : "result-card";
                             
                             htmlContenido += `
                                 <div class="${claseBorde}" data-deporte="${evento.deporte.toLowerCase()}">
@@ -251,15 +276,25 @@
                                     </div>
                             `;
 
-                            // Tres botones listos para Android y Pestañas Nuevas
-                            if (evento.hash) {
-                                const urlLocal = `127.0.0.1:6878/ace/manifest.m3u8?id=${evento.hash}`;
-                                
+                            // Magia del menú desplegable si hay enlaces
+                            if (tieneEnlaces) {
+                                const primerHash = evento.hashes[0];
+                                const urlLocal = `127.0.0.1:6878/ace/manifest.m3u8?id=${primerHash}`;
+
+                                // Solo dibujar el <select> si hay más de 1 opción
+                                if (evento.hashes.length > 1) {
+                                    htmlContenido += `<select class="selector-hash" onchange="cambiarHash(this.value, 'play-${idContador}', 'wvc-${idContador}', 'tab-${idContador}')">`;
+                                    evento.hashes.forEach((h, i) => {
+                                        htmlContenido += `<option value="${h}">Alternativa ${i + 1}</option>`;
+                                    });
+                                    htmlContenido += `</select>`;
+                                }
+
                                 htmlContenido += `
                                     <div class="botones-stream">
-                                        <a href="acestream://${evento.hash}" class="btn-play">▶ Acestream</a>
-                                        <a href="intent://${urlLocal}#Intent;package=com.instantbits.cast.webvideo;scheme=http;type=video/*;end" class="btn-wvc">📺 Cast Web Video</a>
-                                        <a href="http://${urlLocal}" target="_blank" class="btn-tab">🔗 Pestaña Nueva</a>
+                                        <a id="play-${idContador}" href="acestream://${primerHash}" class="btn-play">▶ Acestream</a>
+                                        <a id="wvc-${idContador}" href="intent://${urlLocal}#Intent;package=com.instantbits.cast.webvideo;scheme=http;type=video/*;end" class="btn-wvc">📺 Cast Web Video</a>
+                                        <a id="tab-${idContador}" href="http://${urlLocal}" target="_blank" class="btn-tab">🔗 Pestaña Nueva</a>
                                     </div>
                                 `;
                             }
@@ -282,10 +317,8 @@
 
         function filtrarPorDeporte(deporte, elementoBoton) {
             deporteActual = deporte;
-
             document.querySelectorAll('.btn-filtro').forEach(btn => btn.classList.remove('activo'));
             elementoBoton.classList.add('activo');
-
             filtrarEventos();
         }
 
